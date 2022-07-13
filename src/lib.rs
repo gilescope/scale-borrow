@@ -7,29 +7,26 @@ use scale_info::PortableRegistry;
 use scale_info::Type;
 use scale_info::{TypeDef, TypeDefPrimitive};
 pub trait VisitScale<'scale> {
-    fn visit(&self, path: &Vec<&'scale str>) -> bool {
-        println!("stack {:?}", path);
-
-        if let Some(name) = path.last() {
-            if *name == "outer" {
-                return true;
+    fn visit(&self, path: &Vec<&'scale str>, mut data: &'scale [u8], ty: &Type<PortableForm>) {
+        println!("path {:?}, ty {:?}", path, ty);
+        match ty.type_def() {
+            TypeDef::Primitive(TypeDefPrimitive::Bool) => {
+                let d = &mut data;
+                let val = bool::decode(d).unwrap();
+                println!("bool is {}", val);
             }
-            if *name == "val" {
-                return true;
+            TypeDef::Primitive(TypeDefPrimitive::Str) => {
+                let val = std::str::from_utf8(&data).unwrap();
+                println!("str is {}", val);
+            }
+            _ => {
+                println!("ignoring a {:?}", ty.type_def());
             }
         }
-        false
-    }
-
-    fn visit_bool(&self, val: impl FnOnce() -> bool) {
-        println!("bool is {}", val());
-    }
-    fn visit_str(&self, val: impl FnOnce() -> &'scale str) {
-        println!("str is {}", val());
     }
 }
 
-pub fn semi_decode<'scale>(
+pub fn skeleton_decode<'scale>(
     //stack: Vec<&'scale str>,
     data: &'scale [u8],
     ty_id: UntrackedSymbol<TypeId>,
@@ -50,7 +47,7 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
     visitor: &V,
     types: &PortableRegistry,
 ) -> Vec<&'scale str> {
-    println!("decode {:?}", ty);
+    // println!("decode {:?}", ty);
     match ty.type_def() {
         TypeDef::Composite(inner) => {
             for (i, field) in inner.fields().iter().enumerate() {
@@ -58,42 +55,47 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
                 let s: &'scale str = NUMS[i];
                 let fieldname: &'scale str = &*field.name().map(|f| *f).unwrap_or(s);
                 stack.push(fieldname);
-                let condition = visitor.visit(&stack);
+                // let condition = visitor.visit(&stack);
 
-                if condition {
-                    stack = semi_decode_aux(stack, data, field_ty, visitor, types);
-                } else {
-                    //TODO: skip
-                    stack = semi_decode_aux(stack, data, field_ty, visitor, types);
-                }
+                // if condition {
+                stack = semi_decode_aux(stack, data, field_ty, visitor, types);
+                // } else {
+                //     //TODO: skip
+                //     stack = semi_decode_aux(stack, data, field_ty, visitor, types);
+                // }
                 stack.pop();
             }
         }
         TypeDef::Primitive(TypeDefPrimitive::Str) => {
             let len: u32 = Compact::<u32>::decode(data).unwrap().into();
             let len = len as usize;
-            let mut called = false;
-            visitor.visit_str(|| {
-                called = true;
-                std::str::from_utf8(&data[..len]).unwrap()
-            });
+            // let mut called = false;
+            // visitor.visit_str(|| {
+            //     called = true;
+            //     std::str::from_utf8(&data[..len]).unwrap()
+            // });
+            visitor.visit(&stack, &data[..len], ty);
             *data = &data[len..];
         }
         TypeDef::Primitive(TypeDefPrimitive::Bool) => {
             // Always decode
             println!("bytes to decode: {:?}", &data);
-            let b = bool::decode(data).unwrap();
-            visitor.visit_bool(|| b)
+            // let b = bool::decode(data).unwrap();
+
+            visitor.visit(&stack, data, ty);
+            *data = &data[1..];
         }
         TypeDef::Sequence(seq) => {
             let len: u64 = Compact::<u64>::decode(data).unwrap().into();
             let ty_id = seq.type_param();
             let ty = types.resolve(ty_id.id()).unwrap();
             println!("seq len = {}", len);
-            for _i in 0..len {
+            for i in 0..len as usize {
                 // println!("i = {}", i);println!("bytes left to decode start: {:?}", &data);
+                stack.push(NUMS[i]);
                 stack = semi_decode_aux(stack, data, ty, visitor, types);
                 // println!("bytes left to decode end  : {:?}", &data);
+                stack.pop();
             }
         }
         _ => {
@@ -105,11 +107,11 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{semi_decode, VisitScale};
+    use crate::{skeleton_decode, VisitScale};
     use parity_scale_codec::*;
     use scale_info::interner::UntrackedSymbol;
     use scale_info::prelude::any::TypeId;
-    use scale_info::{PortableRegistry, TypeInfo};
+    use scale_info::PortableRegistry;
     struct S;
     impl<'scale> VisitScale<'scale> for S {}
 
@@ -132,7 +134,7 @@ mod tests {
 
         let (id, types) = make_type::<bool>();
 
-        semi_decode(&encoded[..], id, &S {}, &types)
+        skeleton_decode(&encoded[..], id, &S {}, &types)
     }
 
     #[test]
@@ -142,7 +144,7 @@ mod tests {
 
         let (id, types) = make_type::<&str>();
 
-        semi_decode(&encoded[..], id, &S {}, &types)
+        skeleton_decode(&encoded[..], id, &S {}, &types)
     }
 
     #[test]
@@ -161,7 +163,7 @@ mod tests {
 
         let (id, types) = make_type::<X>();
 
-        semi_decode(&encoded[..], id, &S {}, &types)
+        skeleton_decode(&encoded[..], id, &S {}, &types)
     }
 
     #[test]
@@ -193,6 +195,6 @@ mod tests {
 
         let (id, types) = make_type::<Y>();
 
-        semi_decode(&encoded[..], id, &S {}, &types)
+        skeleton_decode(&encoded[..], id, &S {}, &types)
     }
 }
