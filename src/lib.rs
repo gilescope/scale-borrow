@@ -26,7 +26,7 @@ pub trait VisitScale<'scale> {
                 println!("str is {:?}", val);
             }
             _ => {
-                println!("ignoring a {:?}", ty.type_def());
+                panic!("ignoring a {:?}", ty.type_def());
             }
         }
     }
@@ -88,7 +88,7 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
     visitor: &mut V,
     types: &PortableRegistry,
 ) -> Vec<&'scale str> {
-    // println!("decode {:?}", ty);
+    //  println!("decode {:?}", ty);
     match ty.type_def() {
         TypeDef::Composite(inner) => {
             for (i, field) in inner.fields().iter().enumerate() {
@@ -139,15 +139,16 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
         TypeDef::Sequence(seq) => {
             let len: u64 = Compact::<u64>::decode(data).unwrap().into();
             let ty_id = seq.type_param();
-            let ty = types.resolve(ty_id.id()).unwrap();
-            if *ty.type_def() == TypeDef::Primitive(TypeDefPrimitive::U8) {
+            let ty_inner = types.resolve(ty_id.id()).unwrap();
+            if *ty_inner.type_def() == TypeDef::Primitive(TypeDefPrimitive::U8) {
                 visitor.visit(&stack, &data[..len as usize], ty);
             } else {
                 println!("seq len = {}", len);
                 for i in NUMS.iter().take(len as usize) {
                     // println!("i = {}", i);println!("bytes left to decode start: {:?}", &data);
                     stack.push(i);
-                    stack = semi_decode_aux(stack, data, ty, visitor, types);
+                    // NB: this call must move the data slice onwards.
+                    stack = semi_decode_aux(stack, data, ty_inner, visitor, types);
                     // println!("bytes left to decode end  : {:?}", &data);
                     stack.pop();
                 }
@@ -266,7 +267,7 @@ mod tests {
 
         let (id, types) = make_type::<X>();
 
-        skeleton_decode(&encoded[..], id, &mut S {}, &types);
+        // skeleton_decode(&encoded[..], id, &mut S {}, &types);
 
         descale! {
             struct XParse<'scale> {
@@ -277,14 +278,11 @@ mod tests {
         let xx = XParse::parse(&encoded[..], id, &types);
         assert_eq!(xx.uncopied_bytes, vec![1, 2, 3, 4].as_slice());
 
-
-        // let val = ValueBuilder::parse(&encoded, id, &types);
-        // assert_eq!(
-        //     val,
-        //     Value::Object(Box::new(vec![
-        //         ("uncopied_bytes", Value::Scale(&[1,2,3,4])),
-        //     ]))
-        // );
+        let val = ValueBuilder::parse(&encoded, id, &types);
+        assert_eq!(
+            val,
+            Value::Object(Box::new(vec![("more_scale", Value::Scale(&[1, 2, 3, 4])),]))
+        );
     }
 
     #[test]
@@ -309,7 +307,7 @@ mod tests {
 
         let (id, types) = make_type::<X>();
 
-        skeleton_decode(&encoded[..], id, &mut S {}, &types);
+        // skeleton_decode(&encoded[..], id, &mut S {}, &types);
 
         descale! {
             struct XParse<'scale> {
@@ -331,6 +329,18 @@ mod tests {
         assert_eq!(xx.c, 3);
         assert_eq!(xx.d, 4);
         assert_eq!(xx.e, 5);
+
+        let val = ValueBuilder::parse(&encoded, id, &types);
+        assert_eq!(
+            val,
+            Value::Object(Box::new(vec![
+                ("a", Value::U8(1)),
+                ("b", Value::U16(2)),
+                ("c", Value::U32(3)),
+                ("d", Value::U64(4)),
+                ("e", Value::U128(Box::new(5)))
+            ]))
+        );
     }
 
     #[test]
@@ -375,6 +385,30 @@ mod tests {
         let xx = XParse::parse(&encoded[..], id, &types);
         assert_eq!(xx.named_bool, true);
         assert_eq!(xx.named_bool2, "skip meh");
+
+        let val = ValueBuilder::parse(&encoded, id, &types);
+        assert_eq!(
+            val,
+            Value::Object(Box::new(vec![(
+                "outer",
+                Value::Object(Box::new(vec![
+                    (
+                        "0",
+                        Value::Object(Box::new(vec![
+                            ("val", Value::Bool(true)),
+                            ("name", Value::Str("skip me"))
+                        ]))
+                    ),
+                    (
+                        "1",
+                        Value::Object(Box::new(vec![
+                            ("val", Value::Bool(false)),
+                            ("name", Value::Str("skip meh"))
+                        ]))
+                    ),
+                ]))
+            )]))
+        );
     }
 
     #[test]

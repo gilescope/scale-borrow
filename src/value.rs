@@ -1,5 +1,3 @@
-use std::default;
-
 use scale_info::interner::UntrackedSymbol;
 use scale_info::prelude::any::TypeId;
 use scale_info::TypeDef;
@@ -18,10 +16,13 @@ pub enum Value<'scale> {
     Char(char),
     Str(&'scale str),
     Scale(&'scale [u8]),
+    // Array(Box<Vec<Value<'scale>>>),
+    U8(u8),
+    U16(u16),
     U32(u32),
     U64(u64),
-    U128(&'scale u128),
-    I128(&'scale i128),
+    U128(Box<u128>),
+    I128(Box<i128>),
     // // / An unsigned 256 bit number (internally represented as a 32 byte array).
     U256(&'scale [u8; 32]),
     // // / A signed 256 bit number (internally represented as a 32 byte array).
@@ -52,20 +53,24 @@ impl<'scale> ValueBuilder<'scale> {
     ) {
         if let Value::<'scale>::Object(fields) = current {
             if path.is_empty() {
+                // println!("appending path {:?} fin {:?}  / {:?} to {:?}",path, new_field, new_val, &fields);
                 fields.push((new_field, new_val));
                 return;
             }
 
+            let (head, tail) = path.split_first().unwrap();
             for (field, child) in fields.iter_mut() {
-                if *field == path[0] {
-                    ValueBuilder::append(&path[..path.len() - 1], child, new_field, new_val);
+                if field == head {
+                    // println!("appending deeper new path {:?} | {:?}  / {:?} ", &tail, new_field, new_val);
+                    ValueBuilder::append(tail, child, new_field, new_val);
                     return;
                 }
             }
+            // println!("appending path {:?} notfound {:?} adding {:?} | {:?}  / {:?} ", &tail, head, fields, new_field, new_val);
 
-            fields.push((path[0], Value::Object(Box::new(Vec::<_>::new()))));
-
-            ValueBuilder::append(&path[..path.len() - 1], current, new_field, new_val);
+            fields.push((head, Value::Object(Box::new(Vec::<_>::new()))));
+            let (_, new_current) = fields.last_mut().unwrap();
+            ValueBuilder::append(tail, new_current, new_field, new_val);
         } else {
             panic!()
         }
@@ -79,17 +84,33 @@ impl<'scale> super::VisitScale<'scale> for ValueBuilder<'scale> {
         data: &'scale [u8],
         ty: &scale_info::Type<scale_info::form::PortableForm>,
     ) {
-        // $(
-        // let p: Vec<_> = $path.split('.').collect();
-        // // println!("visited path {:?} == {:?}", path, p);
-        // if *current_path == p {
         let new_val = match ty.type_def() {
             scale_info::TypeDef::Primitive(TypeDefPrimitive::Str) => Some(Value::Str(
-                &<&'scale str as crate::borrow_decode::BorrowDecode>::borrow_decode(data),
+                <&'scale str as crate::borrow_decode::BorrowDecode>::borrow_decode(data),
             )),
             scale_info::TypeDef::Primitive(TypeDefPrimitive::Bool) => Some(Value::Bool(
                 <bool as crate::borrow_decode::BorrowDecode>::borrow_decode(data),
             )),
+            scale_info::TypeDef::Primitive(TypeDefPrimitive::U8) => Some(Value::U8(
+                <u8 as crate::borrow_decode::BorrowDecode>::borrow_decode(data),
+            )),
+            scale_info::TypeDef::Primitive(TypeDefPrimitive::U16) => Some(Value::U16(
+                <u16 as crate::borrow_decode::BorrowDecode>::borrow_decode(data),
+            )),
+            scale_info::TypeDef::Primitive(TypeDefPrimitive::U32) => Some(Value::U32(
+                <u32 as crate::borrow_decode::BorrowDecode>::borrow_decode(data),
+            )),
+            scale_info::TypeDef::Primitive(TypeDefPrimitive::U64) => Some(Value::U64(
+                <u64 as crate::borrow_decode::BorrowDecode>::borrow_decode(data),
+            )),
+            scale_info::TypeDef::Primitive(TypeDefPrimitive::U128) => Some(Value::U128(Box::new(
+                <u128 as crate::borrow_decode::BorrowDecode>::borrow_decode(data),
+            ))),
+
+            TypeDef::Sequence(_seq) => {
+                //TODO: assumed u8
+                Some(Value::Scale(data))
+            }
             _ => {
                 panic!("skipping {:?}", ty);
             }
@@ -103,42 +124,13 @@ impl<'scale> super::VisitScale<'scale> for ValueBuilder<'scale> {
             }
             self.root = Some(Value::Object(Box::new(Vec::<_>::new())));
         }
-        // let mut val: &mut Value = self.root.as_mut().unwrap();
-        // // Calculate insertion point
-        // for p in current_path.iter().take(current_path.len() - 1) {
-        //     if let Value::Object(fields) = &mut val {
-        //         let mut found = false;
-        //         for (field, child) in fields.iter_mut() {
-        //             if field == p {
-        //                 // already exists.
-        //                 // val = child;
-        //                 found = true;
-        //                 break;
-        //             }
-        //         }
-        //         // if !found {
-        //         //     fields.push((p, Value::Object(Box::new(Vec::<_>::new()))));
-        //         //     val = &mut fields.last().unwrap().1;
-        //         //     // we can continue creating at this point...
-        //         // }
-        //     } else {
-        //         panic!();
-        //     }
-        // }
 
+        // println!("appending {:?}  / {:?}", current_path, new_val);
         ValueBuilder::append(
             &current_path[..current_path.len() - 1],
-            &mut self.root.as_mut().unwrap(),
-            &current_path.last().unwrap(),
+            self.root.as_mut().unwrap(),
+            current_path.last().unwrap(),
             new_val.unwrap(),
         );
-
-        // if let Value::Object(fields) = val {
-        //     fields.push((current_path.last().unwrap(), new_val.unwrap()));
-        // } else { panic!() }
-
-        // self.root = Some(val);
-
-        // })+
     }
 }
