@@ -19,6 +19,10 @@ pub trait VisitScale<'scale> {
                 let val = std::str::from_utf8(data).unwrap();
                 println!("str is {}", val);
             }
+            TypeDef::Sequence(_) => { // u8 slice
+                let val = data;
+                println!("str is {:?}", val);
+            }
             _ => {
                 println!("ignoring a {:?}", ty.type_def());
             }
@@ -36,9 +40,16 @@ impl<'scale> BorrowDecode<'scale> for bool {
         <bool>::decode(d).unwrap()
     }
 }
+
 impl<'scale> BorrowDecode<'scale> for &'scale str {
     fn borrow_decode(data: &'scale [u8]) -> Self {
         std::str::from_utf8(data).unwrap()
+    }
+}
+
+impl<'scale> BorrowDecode<'scale> for &'scale [u8] {
+    fn borrow_decode(data: &'scale [u8]) -> Self {
+        data
     }
 }
 
@@ -60,7 +71,7 @@ macro_rules! descale {
         }
 
         impl <'scale> VisitScale<'scale> for $n<$scale> {
-            fn visit(&mut self, current_path: &Vec<&'scale str>, mut data: &'scale [u8], ty: &scale_info::Type<scale_info::form::PortableForm>) {
+            fn visit(&mut self, current_path: &Vec<&'scale str>, data: &'scale [u8], _ty: &scale_info::Type<scale_info::form::PortableForm>) {
                 $(
                 let p: Vec<_> = $path.split('.').collect();
                 // println!("visited path {:?} == {:?}", path, p);
@@ -121,13 +132,17 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
             let len: u64 = Compact::<u64>::decode(data).unwrap().into();
             let ty_id = seq.type_param();
             let ty = types.resolve(ty_id.id()).unwrap();
-            println!("seq len = {}", len);
-            for i in NUMS.iter().take(len as usize) {
-                // println!("i = {}", i);println!("bytes left to decode start: {:?}", &data);
-                stack.push(i);
-                stack = semi_decode_aux(stack, data, ty, visitor, types);
-                // println!("bytes left to decode end  : {:?}", &data);
-                stack.pop();
+            if *ty.type_def() == TypeDef::Primitive(TypeDefPrimitive::U8) {
+                visitor.visit(&stack, &data[..len as usize], ty);
+            } else {
+                println!("seq len = {}", len);
+                for i in NUMS.iter().take(len as usize) {
+                    // println!("i = {}", i);println!("bytes left to decode start: {:?}", &data);
+                    stack.push(i);
+                    stack = semi_decode_aux(stack, data, ty, visitor, types);
+                    // println!("bytes left to decode end  : {:?}", &data);
+                    stack.pop();
+                }
             }
         }
         _ => {
@@ -207,6 +222,32 @@ mod tests {
         };
         let xx = XParse::parse(&encoded[..], id, &types);
         assert_eq!(xx.named_bool2, "hi val");
+    }
+
+    #[test]
+    fn slice_u8_test() {
+        // Only try and decode the bool
+        #[derive(Decode, Encode, scale_info::TypeInfo)]
+        struct X {
+            more_scale: Vec<u8>,
+        }
+        let val = X {
+            more_scale: vec![1, 2, 3, 4],
+        };
+        let encoded = val.encode();
+
+        let (id, types) = make_type::<X>();
+
+        skeleton_decode(&encoded[..], id, &mut S {}, &types);
+
+        descale! {
+            struct XParse<'scale> {
+                #[path("more_scale")]
+                uncopied_bytes: &'scale [u8],
+            }
+        };
+        let xx = XParse::parse(&encoded[..], id, &types);
+        assert_eq!(xx.uncopied_bytes, vec![1, 2, 3, 4].as_slice());
     }
 
     #[test]
