@@ -7,6 +7,7 @@ use scale_info::PortableRegistry;
 use scale_info::Type;
 use scale_info::{TypeDef, TypeDefPrimitive};
 pub trait VisitScale<'scale> {
+    // Visit value on current object
     fn visit(&mut self, path: &Vec<&'scale str>, mut data: &'scale [u8], ty: &Type<PortableForm>) {
         println!("path {:?}, ty {:?}", path, ty);
         match ty.type_def() {
@@ -32,6 +33,7 @@ pub trait VisitScale<'scale> {
 }
 
 pub mod borrow_decode;
+pub mod value;
 
 macro_rules! descale {
     (struct $n:ident <$scale:lifetime> {
@@ -160,6 +162,7 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
 
 #[cfg(test)]
 mod tests {
+    use super::value::{Value, ValueBuilder};
     use crate::{skeleton_decode, VisitScale};
     use parity_scale_codec::*;
     use scale_info::interner::UntrackedSymbol;
@@ -187,7 +190,10 @@ mod tests {
 
         let (id, types) = make_type::<bool>();
 
-        skeleton_decode(&encoded[..], id, &mut S {}, &types)
+        skeleton_decode(&encoded[..], id, &mut S {}, &types);
+
+        let val = ValueBuilder::parse(&encoded, id, &types);
+        assert_eq!(val, Value::Bool(false));
     }
 
     #[test]
@@ -197,7 +203,14 @@ mod tests {
 
         let (id, types) = make_type::<&str>();
 
-        skeleton_decode(&encoded[..], id, &mut S {}, &types)
+        skeleton_decode(&encoded[..], id, &mut S {}, &types);
+
+        let value = ValueBuilder::parse(&encoded, id, &types);
+        if let Value::Str(inner) = value {
+            assert_eq!(val, inner);
+        } else {
+            panic!()
+        }
     }
 
     #[test]
@@ -228,6 +241,15 @@ mod tests {
         };
         let xx = XParse::parse(&encoded[..], id, &types);
         assert_eq!(xx.named_bool2, "hi val");
+
+        let val = ValueBuilder::parse(&encoded, id, &types);
+        assert_eq!(
+            val,
+            Value::Object(Box::new(vec![
+                ("val", Value::Bool(false)),
+                ("name", Value::Str("hi val"))
+            ]))
+        );
     }
 
     #[test]
@@ -254,6 +276,15 @@ mod tests {
         };
         let xx = XParse::parse(&encoded[..], id, &types);
         assert_eq!(xx.uncopied_bytes, vec![1, 2, 3, 4].as_slice());
+
+
+        // let val = ValueBuilder::parse(&encoded, id, &types);
+        // assert_eq!(
+        //     val,
+        //     Value::Object(Box::new(vec![
+        //         ("uncopied_bytes", Value::Scale(&[1,2,3,4])),
+        //     ]))
+        // );
     }
 
     #[test]
@@ -344,5 +375,11 @@ mod tests {
         let xx = XParse::parse(&encoded[..], id, &types);
         assert_eq!(xx.named_bool, true);
         assert_eq!(xx.named_bool2, "skip meh");
+    }
+
+    #[test]
+    fn test_value() {
+        assert_eq!(std::mem::size_of::<super::value::Value>(), 24);
+        assert_eq!(std::mem::size_of::<u128>(), 16);
     }
 }
