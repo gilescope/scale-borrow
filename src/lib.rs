@@ -30,28 +30,7 @@ pub trait VisitScale<'scale> {
     }
 }
 
-pub trait BorrowDecode<'scale> {
-    fn borrow_decode(data: &'scale [u8]) -> Self;
-}
-
-impl<'scale> BorrowDecode<'scale> for bool {
-    fn borrow_decode(mut data: &'scale [u8]) -> Self {
-        let d = &mut data;
-        <bool>::decode(d).unwrap()
-    }
-}
-
-impl<'scale> BorrowDecode<'scale> for &'scale str {
-    fn borrow_decode(data: &'scale [u8]) -> Self {
-        std::str::from_utf8(data).unwrap()
-    }
-}
-
-impl<'scale> BorrowDecode<'scale> for &'scale [u8] {
-    fn borrow_decode(data: &'scale [u8]) -> Self {
-        data
-    }
-}
+pub mod borrow_decode;
 
 macro_rules! descale {
     (struct $n:ident <$scale:lifetime> {
@@ -76,7 +55,7 @@ macro_rules! descale {
                 let p: Vec<_> = $path.split('.').collect();
                 // println!("visited path {:?} == {:?}", path, p);
                 if *current_path == p {
-                    self.$fieldname = <$t as crate::BorrowDecode>::borrow_decode(data);
+                    self.$fieldname = <$t as crate::borrow_decode::BorrowDecode>::borrow_decode(data);
                 })+
             }
         }
