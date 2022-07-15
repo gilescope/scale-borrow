@@ -7,33 +7,78 @@ use scale_info::PortableRegistry;
 use scale_info::Type;
 use scale_info::{TypeDef, TypeDefPrimitive};
 pub trait VisitScale<'scale> {
-    fn visit(&self, path: &Vec<&'scale str>) -> bool {
-        println!("stack {:?}", path);
-
-        if let Some(name) = path.last() {
-            if *name == "outer" {
-                return true;
+    fn visit(&mut self, path: &Vec<&'scale str>, mut data: &'scale [u8], ty: &Type<PortableForm>) {
+        println!("path {:?}, ty {:?}", path, ty);
+        match ty.type_def() {
+            TypeDef::Primitive(TypeDefPrimitive::Bool) => {
+                let d = &mut data;
+                let val = bool::decode(d).unwrap();
+                println!("bool is {}", val);
             }
-            if *name == "val" {
-                return true;
+            TypeDef::Primitive(TypeDefPrimitive::Str) => {
+                let val = std::str::from_utf8(data).unwrap();
+                println!("str is {}", val);
+            }
+            _ => {
+                println!("ignoring a {:?}", ty.type_def());
             }
         }
-        false
-    }
-
-    fn visit_bool(&self, val: impl FnOnce() -> bool) {
-        println!("bool is {}", val());
-    }
-    fn visit_str(&self, val: impl FnOnce() -> &'scale str) {
-        println!("str is {}", val());
     }
 }
 
-pub fn semi_decode<'scale>(
+pub trait BorrowDecode<'scale> {
+    fn borrow_decode(data: &'scale [u8]) -> Self;
+}
+
+impl<'scale> BorrowDecode<'scale> for bool {
+    fn borrow_decode(mut data: &'scale [u8]) -> Self {
+        let d = &mut data;
+        <bool>::decode(d).unwrap()
+    }
+}
+impl<'scale> BorrowDecode<'scale> for &'scale str {
+    fn borrow_decode(data: &'scale [u8]) -> Self {
+        std::str::from_utf8(data).unwrap()
+    }
+}
+
+macro_rules! descale {
+    (struct $n:ident <$scale:lifetime> {
+        $(#[path($path:literal)] $fieldname:ident: $t:ty,)+
+    }) => {
+        #[derive(Default)]
+        struct $n<$scale> {
+            $(pub $fieldname: $t,)+
+        }
+
+        impl <$scale> $n<$scale> {
+            fn parse(data: &'scale [u8], top_type: UntrackedSymbol<TypeId>, types: &scale_info::PortableRegistry) -> $n<$scale> {
+                let mut slf = $n::<$scale>::default();
+                crate::skeleton_decode(data, top_type, &mut slf, types);
+                slf
+            }
+        }
+
+        impl <'scale> VisitScale<'scale> for $n<$scale> {
+            fn visit(&mut self, current_path: &Vec<&'scale str>, mut data: &'scale [u8], ty: &scale_info::Type<scale_info::form::PortableForm>) {
+                $(
+                let p: Vec<_> = $path.split('.').collect();
+                // println!("visited path {:?} == {:?}", path, p);
+                if *current_path == p {
+                    self.$fieldname = <$t as crate::BorrowDecode>::borrow_decode(data);
+                })+
+            }
+        }
+    };
+}
+
+/// Walk the bytes with knowledge of the type and metadata and provide slices
+/// to the visitor that it can optionally decode.
+pub fn skeleton_decode<'scale>(
     //stack: Vec<&'scale str>,
     data: &'scale [u8],
     ty_id: UntrackedSymbol<TypeId>,
-    visitor: &impl VisitScale<'scale>,
+    visitor: &mut impl VisitScale<'scale>,
     types: &PortableRegistry,
 ) {
     let ty = types.resolve(ty_id.id()).unwrap();
@@ -42,58 +87,47 @@ pub fn semi_decode<'scale>(
     semi_decode_aux(vec, cursor, ty, visitor, types);
 }
 
-static NUMS: &[&'static str] = &["0", "1", "2", "3"];
+static NUMS: &[&str] = &["0", "1", "2", "3"];
 fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
     mut stack: Vec<&'scale str>,
     data: &mut &'scale [u8],
     ty: &Type<PortableForm>,
-    visitor: &V,
+    visitor: &mut V,
     types: &PortableRegistry,
 ) -> Vec<&'scale str> {
-    println!("decode {:?}", ty);
+    // println!("decode {:?}", ty);
     match ty.type_def() {
         TypeDef::Composite(inner) => {
             for (i, field) in inner.fields().iter().enumerate() {
                 let field_ty = types.resolve(field.ty().id()).unwrap();
                 let s: &'scale str = NUMS[i];
-                let fieldname: &'scale str = &*field.name().map(|f| *f).unwrap_or(s);
+                let fieldname: &'scale str = field.name().copied().unwrap_or(s);
                 stack.push(fieldname);
-                let condition = visitor.visit(&stack);
-
-                if condition {
-                    stack = semi_decode_aux(stack, data, field_ty, visitor, types);
-                } else {
-                    //TODO: skip
-                    stack = semi_decode_aux(stack, data, field_ty, visitor, types);
-                }
+                stack = semi_decode_aux(stack, data, field_ty, visitor, types);
                 stack.pop();
             }
         }
         TypeDef::Primitive(TypeDefPrimitive::Str) => {
             let len: u32 = Compact::<u32>::decode(data).unwrap().into();
             let len = len as usize;
-            let mut called = false;
-            visitor.visit_str(|| {
-                called = true;
-                std::str::from_utf8(&data[..len]).unwrap()
-            });
+            visitor.visit(&stack, &data[..len], ty);
             *data = &data[len..];
         }
         TypeDef::Primitive(TypeDefPrimitive::Bool) => {
-            // Always decode
-            println!("bytes to decode: {:?}", &data);
-            let b = bool::decode(data).unwrap();
-            visitor.visit_bool(|| b)
+            visitor.visit(&stack, &data[..1], ty);
+            *data = &data[1..];
         }
         TypeDef::Sequence(seq) => {
             let len: u64 = Compact::<u64>::decode(data).unwrap().into();
             let ty_id = seq.type_param();
             let ty = types.resolve(ty_id.id()).unwrap();
             println!("seq len = {}", len);
-            for _i in 0..len {
+            for i in NUMS.iter().take(len as usize) {
                 // println!("i = {}", i);println!("bytes left to decode start: {:?}", &data);
+                stack.push(i);
                 stack = semi_decode_aux(stack, data, ty, visitor, types);
                 // println!("bytes left to decode end  : {:?}", &data);
+                stack.pop();
             }
         }
         _ => {
@@ -105,11 +139,11 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{semi_decode, VisitScale};
+    use crate::{skeleton_decode, VisitScale};
     use parity_scale_codec::*;
     use scale_info::interner::UntrackedSymbol;
     use scale_info::prelude::any::TypeId;
-    use scale_info::{PortableRegistry, TypeInfo};
+    use scale_info::PortableRegistry;
     struct S;
     impl<'scale> VisitScale<'scale> for S {}
 
@@ -132,7 +166,7 @@ mod tests {
 
         let (id, types) = make_type::<bool>();
 
-        semi_decode(&encoded[..], id, &S {}, &types)
+        skeleton_decode(&encoded[..], id, &mut S {}, &types)
     }
 
     #[test]
@@ -142,7 +176,7 @@ mod tests {
 
         let (id, types) = make_type::<&str>();
 
-        semi_decode(&encoded[..], id, &S {}, &types)
+        skeleton_decode(&encoded[..], id, &mut S {}, &types)
     }
 
     #[test]
@@ -155,13 +189,24 @@ mod tests {
         }
         let val = X {
             val: false,
-            name: "skip me".into(),
+            name: "hi val".into(),
         };
         let encoded = val.encode();
 
         let (id, types) = make_type::<X>();
 
-        semi_decode(&encoded[..], id, &S {}, &types)
+        skeleton_decode(&encoded[..], id, &mut S {}, &types);
+
+        descale! {
+            struct XParse<'scale> {
+                #[path("val")]
+                named_bool: bool,
+                #[path("name")]
+                named_bool2: &'scale str,
+            }
+        };
+        let xx = XParse::parse(&encoded[..], id, &types);
+        assert_eq!(xx.named_bool2, "hi val");
     }
 
     #[test]
@@ -182,8 +227,8 @@ mod tests {
             name: "skip me".into(), // 28 len then 115, 107, 105, 112, 32, 109, 101
         };
         let val2 = X {
-            val: false,             // 0
-            name: "skip me".into(), // 28 len then 115, 107, 105, 112, 32, 109, 101
+            val: false,              // 0
+            name: "skip meh".into(), // 28 len then 115, 107, 105, 112, 32, 109, 101, h
         };
         let y = Y {
             outer: vec![val, val2],
@@ -193,6 +238,18 @@ mod tests {
 
         let (id, types) = make_type::<Y>();
 
-        semi_decode(&encoded[..], id, &S {}, &types)
+        skeleton_decode(&encoded[..], id, &mut S {}, &types);
+
+        descale! {
+            struct XParse<'scale> {
+                #[path("outer.0.val")]
+                named_bool: bool,
+                #[path("outer.1.name")]
+                named_bool2: &'scale str,
+            }
+        };
+        let xx = XParse::parse(&encoded[..], id, &types);
+        assert_eq!(xx.named_bool, true);
+        assert_eq!(xx.named_bool2, "skip meh");
     }
 }
