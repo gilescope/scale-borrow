@@ -19,7 +19,8 @@ pub trait VisitScale<'scale> {
                 let val = std::str::from_utf8(data).unwrap();
                 println!("str is {}", val);
             }
-            TypeDef::Sequence(_) => { // u8 slice
+            TypeDef::Sequence(_) => {
+                // u8 slice
                 let val = data;
                 println!("str is {:?}", val);
             }
@@ -39,6 +40,7 @@ macro_rules! descale {
         #[derive(Default)]
         struct $n<$scale> {
             $(pub $fieldname: $t,)+
+            _tag: std::marker::PhantomData<&$scale [u8]>
         }
 
         impl <$scale> $n<$scale> {
@@ -65,7 +67,6 @@ macro_rules! descale {
 /// Walk the bytes with knowledge of the type and metadata and provide slices
 /// to the visitor that it can optionally decode.
 pub fn skeleton_decode<'scale>(
-    //stack: Vec<&'scale str>,
     data: &'scale [u8],
     ty_id: UntrackedSymbol<TypeId>,
     visitor: &mut impl VisitScale<'scale>,
@@ -77,7 +78,7 @@ pub fn skeleton_decode<'scale>(
     semi_decode_aux(vec, cursor, ty, visitor, types);
 }
 
-static NUMS: &[&str] = &["0", "1", "2", "3"];
+static NUMS: &[&str] = &["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
 fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
     mut stack: Vec<&'scale str>,
     data: &mut &'scale [u8],
@@ -104,8 +105,34 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
             *data = &data[len..];
         }
         TypeDef::Primitive(TypeDefPrimitive::Bool) => {
+            // let size = ty..encoded_fixed_size().unwrap();
             visitor.visit(&stack, &data[..1], ty);
             *data = &data[1..];
+        }
+        TypeDef::Primitive(TypeDefPrimitive::U8) => {
+            const LEN: usize = 1;
+            visitor.visit(&stack, &data[..LEN], ty);
+            *data = &data[LEN..];
+        }
+        TypeDef::Primitive(TypeDefPrimitive::U16) => {
+            const LEN: usize = 2;
+            visitor.visit(&stack, &data[..LEN], ty);
+            *data = &data[LEN..];
+        }
+        TypeDef::Primitive(TypeDefPrimitive::U32) => {
+            const LEN: usize = 4;
+            visitor.visit(&stack, &data[..LEN], ty);
+            *data = &data[LEN..];
+        }
+        TypeDef::Primitive(TypeDefPrimitive::U64) => {
+            const LEN: usize = 8;
+            visitor.visit(&stack, &data[..LEN], ty);
+            *data = &data[LEN..];
+        }
+        TypeDef::Primitive(TypeDefPrimitive::U128) => {
+            const LEN: usize = 16;
+            visitor.visit(&stack, &data[..LEN], ty);
+            *data = &data[LEN..];
         }
         TypeDef::Sequence(seq) => {
             let len: u64 = Compact::<u64>::decode(data).unwrap().into();
@@ -227,6 +254,52 @@ mod tests {
         };
         let xx = XParse::parse(&encoded[..], id, &types);
         assert_eq!(xx.uncopied_bytes, vec![1, 2, 3, 4].as_slice());
+    }
+
+    #[test]
+    fn num_tests() {
+        // Only try and decode the bool
+        #[derive(Decode, Encode, scale_info::TypeInfo)]
+        struct X {
+            a: u8,
+            b: u16,
+            c: u32,
+            d: u64,
+            e: u128,
+        }
+        let val = X {
+            a: 1,
+            b: 2,
+            c: 3,
+            d: 4,
+            e: 5,
+        };
+        let encoded = val.encode();
+
+        let (id, types) = make_type::<X>();
+
+        skeleton_decode(&encoded[..], id, &mut S {}, &types);
+
+        descale! {
+            struct XParse<'scale> {
+                #[path("a")]
+                a: u8,
+                #[path("b")]
+                b: u16,
+                #[path("c")]
+                c: u32,
+                #[path("d")]
+                d: u64,
+                #[path("e")]
+                e: u128,
+            }
+        };
+        let xx = XParse::parse(&encoded[..], id, &types);
+        assert_eq!(xx.a, 1);
+        assert_eq!(xx.b, 2);
+        assert_eq!(xx.c, 3);
+        assert_eq!(xx.d, 4);
+        assert_eq!(xx.e, 5);
     }
 
     #[test]
