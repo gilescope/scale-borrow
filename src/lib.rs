@@ -14,6 +14,7 @@ pub trait VisitScale<'scale> {
 pub mod borrow_decode;
 pub mod value;
 
+#[macro_export]
 macro_rules! descale {
     (struct $n:ident <$scale:lifetime> {
         $(#[path($path:literal)] $fieldname:ident: $t:ty,)+
