@@ -19,4 +19,4 @@ If you are targeting lots of parachains and just need something easy --> use sca
 Very experimental
 
 
-TODO bitsequence, enum variant.
+TODO bitsequence.

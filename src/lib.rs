@@ -85,6 +85,22 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
                 stack.pop();
             }
         }
+        TypeDef::Variant(var) => {
+            let (&discriminant,mut data) = data.split_first().unwrap();
+            let variant = var.variants().iter().find(|v| v.index() == discriminant).unwrap();
+
+            stack.push((variant.name(), 999)); // TODO: find type id of enum!
+            for (i, field) in variant.fields().iter().enumerate() {
+                let id = field.ty().id();
+                let field_ty = types.resolve(id).unwrap();
+                let s: &'scale str = NUMS[i];
+                let fieldname: &'scale str = field.name().copied().unwrap_or(s);
+                stack.push((fieldname, id));
+                stack = semi_decode_aux(stack, &mut data, field_ty, visitor, types);
+                stack.pop();
+            }
+            stack.pop();
+        }
         TypeDef::Primitive(TypeDefPrimitive::Str) => {
             let len: u32 = Compact::<u32>::decode(data).unwrap().into();
             let len = len as usize;
@@ -140,7 +156,7 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
             }
         }
         _ => {
-            println!("don't understand a {:?}", ty.type_def());
+            panic!("don't understand a {:?}", ty.type_def());
         }
     }
     stack
@@ -228,6 +244,90 @@ mod tests {
                 ("_ty", Value::U32(1)),
                 ("val", Value::Bool(true)),
                 ("name", Value::Str("hi val"))
+            ]))
+        );
+    }
+
+
+    #[test]
+    fn enum_test() {
+        // Only try and decode the bool
+        #[derive(Decode, Encode, scale_info::TypeInfo)]
+        enum X {
+            A,
+            B(u32,u64),
+            C{
+                val: bool
+            }
+        }
+        let val = X::C{val:true};
+        let encoded = val.encode();
+
+        let (id, types) = make_type::<X>();
+
+        descale! {
+            struct XParse<'scale> {
+                #[path("C.val")]
+                named_bool: bool,
+            }
+        };
+        let xx = XParse::parse(&encoded[..], id, &types);
+        assert_eq!(xx.named_bool, true);
+  
+        let val = ValueBuilder::parse(&encoded, id, &types);
+        assert_eq!(
+            val,
+            Value::Object(Box::new(vec![
+                ("_ty", Value::U32(3)),
+                ("C", Value::Object(
+                    
+                    Box::new(vec![
+                        ("_ty", Value::U32(999)), 
+                        ("val", Value::Bool(true))]),
+                ))
+            ]))
+        );
+    }
+
+
+    #[test]
+    fn tuple_test() {
+        // Only try and decode the bool
+        #[derive(Decode, Encode, scale_info::TypeInfo)]
+        enum X {
+            A,
+            B(u32,u64),
+            C{
+                val: bool
+            }
+        }
+        let val = X::B(10, 20);
+        let encoded = val.encode();
+
+        let (id, types) = make_type::<X>();
+
+        descale! {
+            struct XParse<'scale> {
+                #[path("B.0")]
+                val: u32,
+            }
+        };
+        let xx = XParse::parse(&encoded[..], id, &types);
+        assert_eq!(xx.val, 10);
+  
+        let val = ValueBuilder::parse(&encoded, id, &types);
+        assert_eq!(
+            val,
+            Value::Object(Box::new(vec![
+                ("_ty", Value::U32(1)),
+                ("B", Value::Object(
+                    
+                    Box::new(vec![
+                        ("_ty", Value::U32(999)), 
+                        ("0", Value::U32(10)),
+                        ("1", Value::U64(20))
+                        ]),
+                ))
             ]))
         );
     }
