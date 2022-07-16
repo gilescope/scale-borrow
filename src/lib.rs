@@ -8,12 +8,7 @@ use scale_info::Type;
 use scale_info::{TypeDef, TypeDefPrimitive};
 pub trait VisitScale<'scale> {
     // Visit value on current object
-    fn visit(
-        &mut self,
-        path: &Vec<(&'scale str, u32)>,
-        data: &'scale [u8],
-        ty: &Type<PortableForm>,
-    );
+    fn visit(&mut self, path: &[(&'scale str, u32)], data: &'scale [u8], ty: &Type<PortableForm>);
 }
 
 pub mod borrow_decode;
@@ -38,7 +33,7 @@ macro_rules! descale {
         }
 
         impl <'scale> VisitScale<'scale> for $n<$scale> {
-            fn visit(&mut self, current_path: &Vec<(&'scale str,u32)>, data: &'scale [u8], _ty: &scale_info::Type<scale_info::form::PortableForm>) {
+            fn visit(&mut self, current_path: &[(&'scale str,u32)], data: &'scale [u8], _ty: &scale_info::Type<scale_info::form::PortableForm>) {
                 $(
                     let p: Vec<_> = $path.split('.').collect();//TODO: do earlier.
                     // println!("visited path {:?} == {:?}", current_path, p);

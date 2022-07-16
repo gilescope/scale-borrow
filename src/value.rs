@@ -83,7 +83,7 @@ impl<'scale> ValueBuilder<'scale> {
 impl<'scale> super::VisitScale<'scale> for ValueBuilder<'scale> {
     fn visit(
         &mut self,
-        current_path: &Vec<(&'scale str, u32)>,
+        current_path: &[(&'scale str, u32)],
         data: &'scale [u8],
         ty: &scale_info::Type<scale_info::form::PortableForm>,
     ) {
