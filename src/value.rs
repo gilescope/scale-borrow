@@ -7,7 +7,7 @@ use scale_info::TypeDefPrimitive;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value<'scale> {
     /// A named or unnamed struct-like, array-like or tuple-like set of values.
-    Object(Box<Vec<(&'scale str, Value<'scale>)>>),
+    Object(Box<Vec<(&'scale str, Value<'scale>)>>), // Could this be an array rather than a vec?
     // // UnamedComposite(&'scale Vec<Value<T>>)
     // /// An enum variant.
     // Variant(&'scale (&'scale str, &'scale Value<'scale>)),
@@ -46,7 +46,7 @@ impl<'scale> ValueBuilder<'scale> {
     }
 
     fn append(
-        path: &[&'scale str],
+        path: &[(&'scale str, u32)],
         current: &mut Value<'scale>,
         new_field: &'scale str,
         new_val: Value<'scale>,
@@ -58,7 +58,7 @@ impl<'scale> ValueBuilder<'scale> {
                 return;
             }
 
-            let (head, tail) = path.split_first().unwrap();
+            let ((head, head_ty), tail) = path.split_first().unwrap();
             for (field, child) in fields.iter_mut() {
                 if field == head {
                     // println!("appending deeper new path {:?} | {:?}  / {:?} ", &tail, new_field, new_val);
@@ -68,7 +68,10 @@ impl<'scale> ValueBuilder<'scale> {
             }
             // println!("appending path {:?} notfound {:?} adding {:?} | {:?}  / {:?} ", &tail, head, fields, new_field, new_val);
 
-            fields.push((head, Value::Object(Box::new(Vec::<_>::new()))));
+            fields.push((
+                head,
+                Value::Object(Box::new(vec![("_ty", Value::U32(*head_ty))])),
+            ));
             let (_, new_current) = fields.last_mut().unwrap();
             ValueBuilder::append(tail, new_current, new_field, new_val);
         } else {
@@ -80,7 +83,7 @@ impl<'scale> ValueBuilder<'scale> {
 impl<'scale> super::VisitScale<'scale> for ValueBuilder<'scale> {
     fn visit(
         &mut self,
-        current_path: &Vec<&'scale str>,
+        current_path: &Vec<(&'scale str, u32)>,
         data: &'scale [u8],
         ty: &scale_info::Type<scale_info::form::PortableForm>,
     ) {
@@ -117,19 +120,25 @@ impl<'scale> super::VisitScale<'scale> for ValueBuilder<'scale> {
         };
 
         // place val in right location.
-        if self.root.is_none() {
+        let last = if self.root.is_none() {
             if current_path.is_empty() {
                 self.root = new_val;
                 return;
             }
-            self.root = Some(Value::Object(Box::new(Vec::<_>::new())));
-        }
+            let (last, last_ty) = current_path.last().unwrap();
+            self.root = Some(Value::Object(Box::new(vec![("_ty", Value::U32(*last_ty))])));
+            last
+        } else {
+            let (last, _) = current_path.last().unwrap();
+            last
+        };
 
         // println!("appending {:?}  / {:?}", current_path, new_val);
+
         ValueBuilder::append(
             &current_path[..current_path.len() - 1],
             self.root.as_mut().unwrap(),
-            current_path.last().unwrap(),
+            last,
             new_val.unwrap(),
         );
     }

@@ -8,28 +8,12 @@ use scale_info::Type;
 use scale_info::{TypeDef, TypeDefPrimitive};
 pub trait VisitScale<'scale> {
     // Visit value on current object
-    fn visit(&mut self, path: &Vec<&'scale str>, mut data: &'scale [u8], ty: &Type<PortableForm>) {
-        println!("path {:?}, ty {:?}", path, ty);
-        match ty.type_def() {
-            TypeDef::Primitive(TypeDefPrimitive::Bool) => {
-                let d = &mut data;
-                let val = bool::decode(d).unwrap();
-                println!("bool is {}", val);
-            }
-            TypeDef::Primitive(TypeDefPrimitive::Str) => {
-                let val = std::str::from_utf8(data).unwrap();
-                println!("str is {}", val);
-            }
-            TypeDef::Sequence(_) => {
-                // u8 slice
-                let val = data;
-                println!("str is {:?}", val);
-            }
-            _ => {
-                panic!("ignoring a {:?}", ty.type_def());
-            }
-        }
-    }
+    fn visit(
+        &mut self,
+        path: &Vec<(&'scale str, u32)>,
+        data: &'scale [u8],
+        ty: &Type<PortableForm>,
+    );
 }
 
 pub mod borrow_decode;
@@ -54,13 +38,18 @@ macro_rules! descale {
         }
 
         impl <'scale> VisitScale<'scale> for $n<$scale> {
-            fn visit(&mut self, current_path: &Vec<&'scale str>, data: &'scale [u8], _ty: &scale_info::Type<scale_info::form::PortableForm>) {
+            fn visit(&mut self, current_path: &Vec<(&'scale str,u32)>, data: &'scale [u8], _ty: &scale_info::Type<scale_info::form::PortableForm>) {
                 $(
-                let p: Vec<_> = $path.split('.').collect();
-                // println!("visited path {:?} == {:?}", path, p);
-                if *current_path == p {
-                    self.$fieldname = <$t as crate::borrow_decode::BorrowDecode>::borrow_decode(data);
-                })+
+                    let p: Vec<_> = $path.split('.').collect();//TODO: do earlier.
+                    // println!("visited path {:?} == {:?}", current_path, p);
+                    if current_path.len() == p.len() {
+                        let same = current_path.iter().zip(p).all(|((seg,_), p_seg)| *seg == p_seg);
+                        if same {
+                        // println!("visited path found");
+                        self.$fieldname = <$t as crate::borrow_decode::BorrowDecode>::borrow_decode(data);
+                        }
+                    }
+                )+
             }
         }
     };
@@ -75,27 +64,28 @@ pub fn skeleton_decode<'scale>(
     types: &PortableRegistry,
 ) {
     let ty = types.resolve(ty_id.id()).unwrap();
-    let vec: Vec<&'scale str> = vec![];
+    let vec: Vec<(&'scale str, u32)> = vec![];
     let cursor = &mut &*data;
     semi_decode_aux(vec, cursor, ty, visitor, types);
 }
 
 static NUMS: &[&str] = &["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
 fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
-    mut stack: Vec<&'scale str>,
+    mut stack: Vec<(&'scale str, u32)>,
     data: &mut &'scale [u8],
     ty: &Type<PortableForm>,
     visitor: &mut V,
     types: &PortableRegistry,
-) -> Vec<&'scale str> {
+) -> Vec<(&'scale str, u32)> {
     //  println!("decode {:?}", ty);
     match ty.type_def() {
         TypeDef::Composite(inner) => {
             for (i, field) in inner.fields().iter().enumerate() {
-                let field_ty = types.resolve(field.ty().id()).unwrap();
+                let id = field.ty().id();
+                let field_ty = types.resolve(id).unwrap();
                 let s: &'scale str = NUMS[i];
                 let fieldname: &'scale str = field.name().copied().unwrap_or(s);
-                stack.push(fieldname);
+                stack.push((fieldname, id));
                 stack = semi_decode_aux(stack, data, field_ty, visitor, types);
                 stack.pop();
             }
@@ -146,7 +136,7 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
                 println!("seq len = {}", len);
                 for i in NUMS.iter().take(len as usize) {
                     // println!("i = {}", i);println!("bytes left to decode start: {:?}", &data);
-                    stack.push(i);
+                    stack.push((i, ty_id.id()));
                     // NB: this call must move the data slice onwards.
                     stack = semi_decode_aux(stack, data, ty_inner, visitor, types);
                     // println!("bytes left to decode end  : {:?}", &data);
@@ -164,13 +154,11 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
 #[cfg(test)]
 mod tests {
     use super::value::{Value, ValueBuilder};
-    use crate::{skeleton_decode, VisitScale};
+    use crate::VisitScale;
     use parity_scale_codec::*;
     use scale_info::interner::UntrackedSymbol;
     use scale_info::prelude::any::TypeId;
     use scale_info::PortableRegistry;
-    struct S;
-    impl<'scale> VisitScale<'scale> for S {}
 
     /// Given a type definition, return the PortableType and PortableRegistry
     /// that our decode functions expect.
@@ -191,8 +179,6 @@ mod tests {
 
         let (id, types) = make_type::<bool>();
 
-        skeleton_decode(&encoded[..], id, &mut S {}, &types);
-
         let val = ValueBuilder::parse(&encoded, id, &types);
         assert_eq!(val, Value::Bool(false));
     }
@@ -203,8 +189,6 @@ mod tests {
         let encoded = val.encode();
 
         let (id, types) = make_type::<&str>();
-
-        skeleton_decode(&encoded[..], id, &mut S {}, &types);
 
         let value = ValueBuilder::parse(&encoded, id, &types);
         if let Value::Str(inner) = value {
@@ -223,14 +207,12 @@ mod tests {
             name: String,
         }
         let val = X {
-            val: false,
+            val: true,
             name: "hi val".into(),
         };
         let encoded = val.encode();
 
         let (id, types) = make_type::<X>();
-
-        skeleton_decode(&encoded[..], id, &mut S {}, &types);
 
         descale! {
             struct XParse<'scale> {
@@ -241,13 +223,15 @@ mod tests {
             }
         };
         let xx = XParse::parse(&encoded[..], id, &types);
+        assert_eq!(xx.named_bool, true);
         assert_eq!(xx.named_bool2, "hi val");
 
         let val = ValueBuilder::parse(&encoded, id, &types);
         assert_eq!(
             val,
             Value::Object(Box::new(vec![
-                ("val", Value::Bool(false)),
+                ("_ty", Value::U32(1)),
+                ("val", Value::Bool(true)),
                 ("name", Value::Str("hi val"))
             ]))
         );
@@ -267,8 +251,6 @@ mod tests {
 
         let (id, types) = make_type::<X>();
 
-        // skeleton_decode(&encoded[..], id, &mut S {}, &types);
-
         descale! {
             struct XParse<'scale> {
                 #[path("more_scale")]
@@ -281,7 +263,10 @@ mod tests {
         let val = ValueBuilder::parse(&encoded, id, &types);
         assert_eq!(
             val,
-            Value::Object(Box::new(vec![("more_scale", Value::Scale(&[1, 2, 3, 4])),]))
+            Value::Object(Box::new(vec![
+                ("_ty", Value::U32(1)),
+                ("more_scale", Value::Scale(&[1, 2, 3, 4])),
+            ]))
         );
     }
 
@@ -306,8 +291,6 @@ mod tests {
         let encoded = val.encode();
 
         let (id, types) = make_type::<X>();
-
-        // skeleton_decode(&encoded[..], id, &mut S {}, &types);
 
         descale! {
             struct XParse<'scale> {
@@ -334,6 +317,7 @@ mod tests {
         assert_eq!(
             val,
             Value::Object(Box::new(vec![
+                ("_ty", Value::U32(1)),
                 ("a", Value::U8(1)),
                 ("b", Value::U16(2)),
                 ("c", Value::U32(3)),
@@ -372,8 +356,6 @@ mod tests {
 
         let (id, types) = make_type::<Y>();
 
-        skeleton_decode(&encoded[..], id, &mut S {}, &types);
-
         descale! {
             struct XParse<'scale> {
                 #[path("outer.0.val")]
@@ -389,25 +371,31 @@ mod tests {
         let val = ValueBuilder::parse(&encoded, id, &types);
         assert_eq!(
             val,
-            Value::Object(Box::new(vec![(
-                "outer",
-                Value::Object(Box::new(vec![
-                    (
-                        "0",
-                        Value::Object(Box::new(vec![
-                            ("val", Value::Bool(true)),
-                            ("name", Value::Str("skip me"))
-                        ]))
-                    ),
-                    (
-                        "1",
-                        Value::Object(Box::new(vec![
-                            ("val", Value::Bool(false)),
-                            ("name", Value::Str("skip meh"))
-                        ]))
-                    ),
-                ]))
-            )]))
+            Value::Object(Box::new(vec![
+                ("_ty", Value::U32(3)),
+                (
+                    "outer",
+                    Value::Object(Box::new(vec![
+                        ("_ty", Value::U32(1)),
+                        (
+                            "0",
+                            Value::Object(Box::new(vec![
+                                ("_ty", Value::U32(2)),
+                                ("val", Value::Bool(true)),
+                                ("name", Value::Str("skip me"))
+                            ]))
+                        ),
+                        (
+                            "1",
+                            Value::Object(Box::new(vec![
+                                ("_ty", Value::U32(2)),
+                                ("val", Value::Bool(false)),
+                                ("name", Value::Str("skip meh"))
+                            ]))
+                        ),
+                    ]))
+                )
+            ]))
         );
     }
 
