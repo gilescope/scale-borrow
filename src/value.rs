@@ -1,5 +1,3 @@
-use scale_info::interner::UntrackedSymbol;
-use scale_info::prelude::any::TypeId;
 use scale_info::TypeDef;
 use scale_info::TypeDefPrimitive;
 
@@ -40,11 +38,11 @@ pub struct ValueBuilder<'scale> {
 impl<'scale> ValueBuilder<'scale> {
     pub fn parse(
         data: &'scale [u8],
-        top_type: UntrackedSymbol<TypeId>,
+        top_type_id: u32,
         types: &scale_info::PortableRegistry,
     ) -> Value<'scale> {
         let mut slf = ValueBuilder::<'scale>::default();
-        crate::skeleton_decode(data, top_type, &mut slf, types);
+        crate::skeleton_decode(data, top_type_id, &mut slf, types);
         slf.root.take().unwrap()
     }
 

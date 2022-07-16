@@ -1,8 +1,6 @@
 use parity_scale_codec::Compact;
 use parity_scale_codec::Decode;
 use scale_info::form::PortableForm;
-use scale_info::interner::UntrackedSymbol;
-use scale_info::prelude::any::TypeId;
 use scale_info::PortableRegistry;
 use scale_info::Type;
 use scale_info::{TypeDef, TypeDefPrimitive};
@@ -13,7 +11,7 @@ pub trait VisitScale<'scale> {
 
 pub mod borrow_decode;
 pub mod value;
-pub use value::Value;
+pub use value::{ValueBuilder, Value};
 
 #[macro_export]
 macro_rules! descale {
@@ -29,7 +27,7 @@ macro_rules! descale {
         impl <$scale> $n<$scale> {
             fn parse(data: &'scale [u8], top_type: UntrackedSymbol<TypeId>, types: &scale_info::PortableRegistry) -> $n<$scale> {
                 let mut slf = $n::<$scale>::default();
-                crate::skeleton_decode(data, top_type, &mut slf, types);
+                crate::skeleton_decode(data, top_type.id(), &mut slf, types);
                 slf
             }
         }
@@ -56,11 +54,11 @@ macro_rules! descale {
 /// to the visitor that it can optionally decode.
 pub fn skeleton_decode<'scale>(
     data: &'scale [u8],
-    ty_id: UntrackedSymbol<TypeId>,
+    ty_id: u32,
     visitor: &mut impl VisitScale<'scale>,
     types: &PortableRegistry,
 ) {
-    let id = ty_id.id();
+    let id = ty_id;
     let ty = types.resolve(id).unwrap();
     let vec: Vec<(&'scale str, u32)> = vec![];
     let cursor = &mut &*data;
@@ -83,7 +81,7 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
                 let id = field.ty().id();
                 let field_ty = types.resolve(id).unwrap();
                 let s: &'scale str = NUMS[i];
-                let fieldname: &'scale str = field.name().copied().unwrap_or(s);
+                let fieldname: &'scale str = field.name().unwrap_or(&s);
                 stack.push((fieldname, id));
                 stack = semi_decode_aux(stack, data, field_ty, id, visitor, types);
                 stack.pop();
@@ -102,7 +100,7 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
                 let id = field.ty().id();
                 let field_ty = types.resolve(id).unwrap();
                 let s: &'scale str = NUMS[i];
-                let fieldname: &'scale str = field.name().copied().unwrap_or(s);
+                let fieldname: &'scale str = field.name().unwrap_or(&s);
                 stack.push((fieldname, id));
                 stack = semi_decode_aux(stack, &mut data, field_ty, id, visitor, types);
                 stack.pop();
