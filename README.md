@@ -12,11 +12,10 @@ If you are targeting lots of parachains and just need something easy --> use sca
 
    * fun, pleasent
    * efficient
-   * few deps, fast to compile
+   * few deps, fast to compile (28 deps)
 
 ## Status
 
 Very experimental
 
-
-TODO bitsequence.
+TODO non-panic error handling, wasm.

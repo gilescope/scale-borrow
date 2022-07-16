@@ -27,6 +27,9 @@ pub enum Value<'scale> {
     U256(&'scale [u8; 32]),
     // // / A signed 256 bit number (internally represented as a 32 byte array).
     I256(&'scale [u8; 32]),
+
+    #[cfg(feature = "bitvec")]
+    Bits(Box<bitvec::prelude::BitVec<u8, bitvec::prelude::Lsb0>>),
 }
 
 #[derive(Default)]
@@ -78,6 +81,23 @@ impl<'scale> ValueBuilder<'scale> {
             panic!()
         }
     }
+
+    #[cfg(not(feature = "bitvec"))]
+    #[inline]
+    fn parse_bitvec(data: &'scale [u8]) -> Option<Value> {
+        Some(Value::Scale(data))
+    }
+
+    #[cfg(feature = "bitvec")]
+    #[inline]
+    fn parse_bitvec(mut data: &'scale [u8]) -> Option<Value> {
+        assert_eq!(data.len(), 1, "bitvec size not suppored - please send pr.");
+        Some(
+             Value::Bits(Box::new(
+                <bitvec::prelude::BitVec<u8, bitvec::prelude::Lsb0>
+                as
+                parity_scale_codec::Decode>::decode(&mut data).unwrap())))
+    }
 }
 
 impl<'scale> super::VisitScale<'scale> for ValueBuilder<'scale> {
@@ -114,6 +134,7 @@ impl<'scale> super::VisitScale<'scale> for ValueBuilder<'scale> {
                 //TODO: assumed u8
                 Some(Value::Scale(data))
             }
+            TypeDef::BitSequence(_seq) => ValueBuilder::parse_bitvec(data),
             _ => {
                 panic!("skipping {:?}", ty);
             }

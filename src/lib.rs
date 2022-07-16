@@ -58,10 +58,11 @@ pub fn skeleton_decode<'scale>(
     visitor: &mut impl VisitScale<'scale>,
     types: &PortableRegistry,
 ) {
-    let ty = types.resolve(ty_id.id()).unwrap();
+    let id = ty_id.id();
+    let ty = types.resolve(id).unwrap();
     let vec: Vec<(&'scale str, u32)> = vec![];
     let cursor = &mut &*data;
-    semi_decode_aux(vec, cursor, ty, visitor, types);
+    semi_decode_aux(vec, cursor, ty, id, visitor, types);
 }
 
 static NUMS: &[&str] = &["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
@@ -69,6 +70,7 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
     mut stack: Vec<(&'scale str, u32)>,
     data: &mut &'scale [u8],
     ty: &Type<PortableForm>,
+    id: u32,
     visitor: &mut V,
     types: &PortableRegistry,
 ) -> Vec<(&'scale str, u32)> {
@@ -81,22 +83,26 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
                 let s: &'scale str = NUMS[i];
                 let fieldname: &'scale str = field.name().copied().unwrap_or(s);
                 stack.push((fieldname, id));
-                stack = semi_decode_aux(stack, data, field_ty, visitor, types);
+                stack = semi_decode_aux(stack, data, field_ty, id, visitor, types);
                 stack.pop();
             }
         }
         TypeDef::Variant(var) => {
-            let (&discriminant,mut data) = data.split_first().unwrap();
-            let variant = var.variants().iter().find(|v| v.index() == discriminant).unwrap();
+            let (&discriminant, mut data) = data.split_first().unwrap();
+            let variant = var
+                .variants()
+                .iter()
+                .find(|v| v.index() == discriminant)
+                .unwrap();
 
-            stack.push((variant.name(), 999)); // TODO: find type id of enum!
+            stack.push((variant.name(), id));
             for (i, field) in variant.fields().iter().enumerate() {
                 let id = field.ty().id();
                 let field_ty = types.resolve(id).unwrap();
                 let s: &'scale str = NUMS[i];
                 let fieldname: &'scale str = field.name().copied().unwrap_or(s);
                 stack.push((fieldname, id));
-                stack = semi_decode_aux(stack, &mut data, field_ty, visitor, types);
+                stack = semi_decode_aux(stack, &mut data, field_ty, id, visitor, types);
                 stack.pop();
             }
             stack.pop();
@@ -149,10 +155,21 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
                     // println!("i = {}", i);println!("bytes left to decode start: {:?}", &data);
                     stack.push((i, ty_id.id()));
                     // NB: this call must move the data slice onwards.
-                    stack = semi_decode_aux(stack, data, ty_inner, visitor, types);
+                    stack = semi_decode_aux(stack, data, ty_inner, ty_id.id(), visitor, types);
                     // println!("bytes left to decode end  : {:?}", &data);
                     stack.pop();
                 }
+            }
+        }
+        TypeDef::BitSequence(seq) => {
+            // assert_eq!(seq.bit_order_type(), bitvec::prelude::Lsb0);
+            let ty_inner = types.resolve(seq.bit_store_type().id()).unwrap();
+            match ty_inner.type_def() {
+                TypeDef::Primitive(TypeDefPrimitive::U8) => {
+                    visitor.visit(&stack, &data[..1], ty);
+                    *data = &data[1..];
+                }
+                _ => panic!("unsupported bitvec size - send PR please."),
             }
         }
         _ => {
@@ -192,6 +209,32 @@ mod tests {
 
         let val = ValueBuilder::parse(&encoded, id, &types);
         assert_eq!(val, Value::Bool(false));
+    }
+
+    #[test]
+    #[cfg(feature = "bitvec")]
+    fn bitvec_test() {
+        use bitvec::prelude::*;
+        let val = bitvec![u8, Msb0;];
+        let encoded = val.encode();
+
+        let (id, types) = make_type::<BitVec<u8, bitvec::order::Lsb0>>();
+
+        let val = ValueBuilder::parse(&encoded, id, &types);
+        assert_eq!(val, Value::Bits(Box::new(bitvec![u8, Lsb0;])));
+    }
+
+    #[test]
+    #[cfg(not(feature = "bitvec"))]
+    fn bitvec_test2() {
+        use bitvec::prelude::*;
+        let val = bitvec![u8, Msb0;];
+        let encoded = val.encode();
+
+        let (id, types) = make_type::<BitVec<u8, bitvec::order::Lsb0>>();
+
+        let val = ValueBuilder::parse(&encoded, id, &types);
+        assert_eq!(val, Value::Scale(&[0]));
     }
 
     #[test]
@@ -248,19 +291,16 @@ mod tests {
         );
     }
 
-
     #[test]
     fn enum_test() {
         // Only try and decode the bool
         #[derive(Decode, Encode, scale_info::TypeInfo)]
         enum X {
             A,
-            B(u32,u64),
-            C{
-                val: bool
-            }
+            B(u32, u64),
+            C { val: bool },
         }
-        let val = X::C{val:true};
+        let val = X::C { val: true };
         let encoded = val.encode();
 
         let (id, types) = make_type::<X>();
@@ -273,22 +313,22 @@ mod tests {
         };
         let xx = XParse::parse(&encoded[..], id, &types);
         assert_eq!(xx.named_bool, true);
-  
+
         let val = ValueBuilder::parse(&encoded, id, &types);
         assert_eq!(
             val,
             Value::Object(Box::new(vec![
                 ("_ty", Value::U32(3)),
-                ("C", Value::Object(
-                    
-                    Box::new(vec![
-                        ("_ty", Value::U32(999)), 
-                        ("val", Value::Bool(true))]),
-                ))
+                (
+                    "C",
+                    Value::Object(Box::new(vec![
+                        ("_ty", Value::U32(0)),
+                        ("val", Value::Bool(true))
+                    ]),)
+                )
             ]))
         );
     }
-
 
     #[test]
     fn tuple_test() {
@@ -296,10 +336,8 @@ mod tests {
         #[derive(Decode, Encode, scale_info::TypeInfo)]
         enum X {
             A,
-            B(u32,u64),
-            C{
-                val: bool
-            }
+            B(u32, u64),
+            C { val: bool },
         }
         let val = X::B(10, 20);
         let encoded = val.encode();
@@ -314,20 +352,20 @@ mod tests {
         };
         let xx = XParse::parse(&encoded[..], id, &types);
         assert_eq!(xx.val, 10);
-  
+
         let val = ValueBuilder::parse(&encoded, id, &types);
         assert_eq!(
             val,
             Value::Object(Box::new(vec![
                 ("_ty", Value::U32(1)),
-                ("B", Value::Object(
-                    
-                    Box::new(vec![
-                        ("_ty", Value::U32(999)), 
+                (
+                    "B",
+                    Value::Object(Box::new(vec![
+                        ("_ty", Value::U32(0)),
                         ("0", Value::U32(10)),
                         ("1", Value::U64(20))
-                        ]),
-                ))
+                    ]),)
+                )
             ]))
         );
     }
