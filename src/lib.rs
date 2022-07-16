@@ -13,6 +13,7 @@ pub trait VisitScale<'scale> {
 
 pub mod borrow_decode;
 pub mod value;
+pub use value::Value;
 
 #[macro_export]
 macro_rules! descale {
