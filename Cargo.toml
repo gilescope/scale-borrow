@@ -7,14 +7,20 @@ edition = "2021"
 
 [dependencies]
 parity-scale-codec = { version = "3.1.5", default-features = false, features = [] }
-scale-info = { version= "*", default-features = false, features = []  }
-frame-metadata = { version="15.0", default-features = false, features = ["v14"] }
+# scale-info = { version= "2.1", default-features = false, features = []  }
+scale-info = { path="/home/gilescope/git/scale-info/", default-features = false, features = ["dogfood"]  }
+
 bitvec = { version="1.0", defualt-features=false, features = [], optional = true }
 
 [dev-dependencies]
 parity-scale-codec = { version = "3.1.5", default-features = false, features = ["bit-vec","full"] }
-scale-info = { version= "*", default-features = false, features = ["bit-vec"]  }
+# scale-info = { version= "2.1", default-features = false, features = ["bit-vec"]  }
+scale-info = { path="/home/gilescope/git/scale-info/", default-features = false, features = ["dogfood", "bit-vec"]  }
 bitvec = { version="1.0", defualt-features=false, features = [] }
+
+frame-metadata = { version="15.0", default-features = false, features = ["v14"] }
+# frame-metadata = { git="https://github.com/integritee-network/frame-metadata.git", default-features = false, features = ["v14", "full_derive"] }
+
 
 [features]
 default = []

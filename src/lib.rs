@@ -6,9 +6,8 @@ use scale_info::Type;
 use scale_info::{TypeDef, TypeDefPrimitive};
 pub trait VisitScale<'scale> {
     // Visit value on current object
-    fn visit(&mut self, path: &[(&'scale str, u32)], data: &'scale [u8], ty: &Type<PortableForm>);
+    fn visit(&mut self, path: &[(&'scale str, u32)], data: &'scale [u8], ty: &Type<PortableForm>, types: &PortableRegistry);
 }
-
 pub mod borrow_decode;
 pub mod value;
 pub use value::{ValueBuilder, Value};
@@ -33,15 +32,15 @@ macro_rules! descale {
         }
 
         impl <'scale> VisitScale<'scale> for $n<$scale> {
-            fn visit(&mut self, current_path: &[(&'scale str,u32)], data: &'scale [u8], _ty: &scale_info::Type<scale_info::form::PortableForm>) {
+            fn visit(&mut self, current_path: &[(&'scale str,u32)], data: &'scale [u8], _ty: &scale_info::Type<scale_info::form::PortableForm>, _types: &PortableRegistry) {
                 $(
                     let p: Vec<_> = $path.split('.').collect();//TODO: do earlier.
                     // println!("visited path {:?} == {:?}", current_path, p);
                     if current_path.len() == p.len() {
                         let same = current_path.iter().zip(p).all(|((seg,_), p_seg)| *seg == p_seg);
                         if same {
-                        // println!("visited path found");
-                        self.$fieldname = <$t as crate::borrow_decode::BorrowDecode>::borrow_decode(data);
+                            // println!("visited path found");
+                            self.$fieldname = <$t as crate::borrow_decode::BorrowDecode>::borrow_decode(data);
                         }
                     }
                 )+
@@ -74,7 +73,7 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
     visitor: &mut V,
     types: &PortableRegistry,
 ) -> Vec<(&'scale str, u32)> {
-    //  println!("decode {:?}", ty);
+    println!("decode {:#?} - left {}", ty.type_def(), data.len());
     match ty.type_def() {
         TypeDef::Composite(inner) => {
             for (i, field) in inner.fields().iter().enumerate() {
@@ -110,37 +109,37 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
         TypeDef::Primitive(TypeDefPrimitive::Str) => {
             let len: u32 = Compact::<u32>::decode(data).unwrap().into();
             let len = len as usize;
-            visitor.visit(&stack, &data[..len], ty);
+            visitor.visit(&stack, &data[..len], ty, types);
             *data = &data[len..];
         }
         TypeDef::Primitive(TypeDefPrimitive::Bool) => {
             // let size = ty..encoded_fixed_size().unwrap();
-            visitor.visit(&stack, &data[..1], ty);
+            visitor.visit(&stack, &data[..1], ty, types);
             *data = &data[1..];
         }
         TypeDef::Primitive(TypeDefPrimitive::U8) => {
             const LEN: usize = 1;
-            visitor.visit(&stack, &data[..LEN], ty);
+            visitor.visit(&stack, &data[..LEN], ty, types);
             *data = &data[LEN..];
         }
         TypeDef::Primitive(TypeDefPrimitive::U16) => {
             const LEN: usize = 2;
-            visitor.visit(&stack, &data[..LEN], ty);
+            visitor.visit(&stack, &data[..LEN], ty, types);
             *data = &data[LEN..];
         }
         TypeDef::Primitive(TypeDefPrimitive::U32) => {
             const LEN: usize = 4;
-            visitor.visit(&stack, &data[..LEN], ty);
+            visitor.visit(&stack, &data[..LEN], ty, types);
             *data = &data[LEN..];
         }
         TypeDef::Primitive(TypeDefPrimitive::U64) => {
             const LEN: usize = 8;
-            visitor.visit(&stack, &data[..LEN], ty);
+            visitor.visit(&stack, &data[..LEN], ty, types);
             *data = &data[LEN..];
         }
         TypeDef::Primitive(TypeDefPrimitive::U128) => {
             const LEN: usize = 16;
-            visitor.visit(&stack, &data[..LEN], ty);
+            visitor.visit(&stack, &data[..LEN], ty, types);
             *data = &data[LEN..];
         }
         TypeDef::Sequence(seq) => {
@@ -148,7 +147,7 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
             let ty_id = seq.type_param();
             let ty_inner = types.resolve(ty_id.id()).unwrap();
             if *ty_inner.type_def() == TypeDef::Primitive(TypeDefPrimitive::U8) {
-                visitor.visit(&stack, &data[..len as usize], ty);
+                visitor.visit(&stack, &data[..len as usize], ty, types);
             } else {
                 println!("seq len = {}", len);
                 for i in NUMS.iter().take(len as usize) {
@@ -166,7 +165,7 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
             let ty_inner = types.resolve(seq.bit_store_type().id()).unwrap();
             match ty_inner.type_def() {
                 TypeDef::Primitive(TypeDefPrimitive::U8) => {
-                    visitor.visit(&stack, &data[..1], ty);
+                    visitor.visit(&stack, &data[..1], ty, types);
                     *data = &data[1..];
                 }
                 _ => panic!("unsupported bitvec size - send PR please."),
@@ -219,7 +218,7 @@ mod tests {
 
         let (id, types) = make_type::<bool>();
 
-        let val = ValueBuilder::parse(&encoded, id, &types);
+        let val = ValueBuilder::parse(&encoded, id.id(), &types);
         assert_eq!(val, Value::Bool(false));
     }
 
@@ -245,7 +244,7 @@ mod tests {
 
         let (id, types) = make_type::<BitVec<u8, bitvec::order::Lsb0>>();
 
-        let val = ValueBuilder::parse(&encoded, id, &types);
+        let val = ValueBuilder::parse(&encoded, id.id(), &types);
         assert_eq!(val, Value::Scale(&[0]));
     }
 
@@ -256,7 +255,7 @@ mod tests {
 
         let (id, types) = make_type::<&str>();
 
-        let value = ValueBuilder::parse(&encoded, id, &types);
+        let value = ValueBuilder::parse(&encoded, id.id(), &types);
         if let Value::Str(inner) = value {
             assert_eq!(val, inner);
         } else {
@@ -292,7 +291,7 @@ mod tests {
         assert_eq!(xx.named_bool, true);
         assert_eq!(xx.named_bool2, "hi val");
 
-        let val = ValueBuilder::parse(&encoded, id, &types);
+        let val = ValueBuilder::parse(&encoded, id.id(), &types);
         assert_eq!(
             val,
             Value::Object(Box::new(vec![
@@ -326,7 +325,7 @@ mod tests {
         let xx = XParse::parse(&encoded[..], id, &types);
         assert_eq!(xx.named_bool, true);
 
-        let val = ValueBuilder::parse(&encoded, id, &types);
+        let val = ValueBuilder::parse(&encoded, id.id(), &types);
         assert_eq!(
             val,
             Value::Object(Box::new(vec![
@@ -365,7 +364,7 @@ mod tests {
         let xx = XParse::parse(&encoded[..], id, &types);
         assert_eq!(xx.val, 10);
 
-        let val = ValueBuilder::parse(&encoded, id, &types);
+        let val = ValueBuilder::parse(&encoded, id.id(), &types);
         assert_eq!(
             val,
             Value::Object(Box::new(vec![
@@ -405,7 +404,7 @@ mod tests {
         let xx = XParse::parse(&encoded[..], id, &types);
         assert_eq!(xx.uncopied_bytes, vec![1, 2, 3, 4].as_slice());
 
-        let val = ValueBuilder::parse(&encoded, id, &types);
+        let val = ValueBuilder::parse(&encoded, id.id(), &types);
         assert_eq!(
             val,
             Value::Object(Box::new(vec![
@@ -458,7 +457,7 @@ mod tests {
         assert_eq!(xx.d, 4);
         assert_eq!(xx.e, 5);
 
-        let val = ValueBuilder::parse(&encoded, id, &types);
+        let val = ValueBuilder::parse(&encoded, id.id(), &types);
         assert_eq!(
             val,
             Value::Object(Box::new(vec![
@@ -513,7 +512,7 @@ mod tests {
         assert_eq!(xx.named_bool, true);
         assert_eq!(xx.named_bool2, "skip meh");
 
-        let val = ValueBuilder::parse(&encoded, id, &types);
+        let val = ValueBuilder::parse(&encoded, id.id(), &types);
         assert_eq!(
             val,
             Value::Object(Box::new(vec![

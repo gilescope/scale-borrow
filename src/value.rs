@@ -1,5 +1,7 @@
+use scale_info::PortableRegistry;
 use scale_info::TypeDef;
 use scale_info::TypeDefPrimitive;
+use parity_scale_codec::Compact;
 
 /// The underlying shape of a given value.
 #[derive(Clone, Debug, PartialEq)]
@@ -104,6 +106,7 @@ impl<'scale> super::VisitScale<'scale> for ValueBuilder<'scale> {
         current_path: &[(&'scale str, u32)],
         data: &'scale [u8],
         ty: &scale_info::Type<scale_info::form::PortableForm>,
+        types: &PortableRegistry
     ) {
         let new_val = match ty.type_def() {
             scale_info::TypeDef::Primitive(TypeDefPrimitive::Str) => Some(Value::Str(
