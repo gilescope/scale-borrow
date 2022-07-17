@@ -172,6 +172,18 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
                 _ => panic!("unsupported bitvec size - send PR please."),
             }
         }
+        TypeDef::Compact(inner) => {
+            let ty_inner = types.resolve(inner.type_param().id()).unwrap();
+
+            match ty_inner.type_def() {
+                TypeDef::Primitive(TypeDefPrimitive::U32) => {
+                    visitor.visit(&stack, &data, ty, types);
+                    Compact::<u32>::skip(data).unwrap();
+                },
+                 _ => panic!("unsupported compact size - send PR please."),
+            }
+            //  panic!("don't understand a {:?}", ty_inner.type_def());
+        }
         _ => {
             panic!("don't understand a {:?}", ty.type_def());
         }

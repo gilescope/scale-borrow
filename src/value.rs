@@ -133,6 +133,15 @@ impl<'scale> super::VisitScale<'scale> for ValueBuilder<'scale> {
                 Some(Value::Scale(data))
             }
             TypeDef::BitSequence(_seq) => ValueBuilder::parse_bitvec(data),
+            TypeDef::Compact(inner) => {
+                let inner = types.resolve(inner.type_param().id()).unwrap();
+                match inner.type_def() {
+                    TypeDef::Primitive(TypeDefPrimitive::U32) => {
+                        Some(Value::U32(<Compact<u32> as crate::borrow_decode::BorrowDecode>::borrow_decode(data).into()))
+                    },
+                    _ => panic!("unsupported {:?}", inner)
+                }
+            }
             _ => {
                 panic!("skipping {:?}", ty);
             }
