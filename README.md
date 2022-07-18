@@ -13,7 +13,7 @@ If you are targeting lots of parachains and just need something easy --> use sca
    * fun, pleasent
    * efficient
    * few deps, fast to compile (28 deps)
-   * wasm compatible
+   * wasm compatible - currently using integritee's fork of frame-metadata to achieve this.
 
 ## How to use
 

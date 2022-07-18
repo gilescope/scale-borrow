@@ -1,4 +1,4 @@
-use parity_scale_codec::{Decode, Compact};
+use parity_scale_codec::{Compact, Decode};
 
 pub trait BorrowDecode<'scale> {
     fn borrow_decode(data: &'scale [u8]) -> Self;
@@ -30,4 +30,4 @@ macro_rules! impl_borrow_decode {
 }
 
 // Just delegate to standard scale decode
-impl_borrow_decode!(bool u8 u16 u32 u64 u128 Compact<u32>);
+impl_borrow_decode!(bool u8 u16 u32 u64 u128 Compact<u32> Compact<u64> Compact<u128>);

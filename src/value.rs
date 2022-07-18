@@ -1,7 +1,7 @@
+use parity_scale_codec::Compact;
 use scale_info::PortableRegistry;
 use scale_info::TypeDef;
 use scale_info::TypeDefPrimitive;
-use parity_scale_codec::Compact;
 
 /// The underlying shape of a given value.
 #[derive(Clone, Debug, PartialEq)]
@@ -16,6 +16,8 @@ pub enum Value<'scale> {
     Char(char),
     Str(&'scale str),
     Scale(&'scale [u8]),
+    // Escape hatch for when you can't borrow.
+    ScaleOwned(Box<Vec<u8>>),
     // Array(Box<Vec<Value<'scale>>>),
     U8(u8),
     U16(u16),
@@ -32,6 +34,109 @@ pub enum Value<'scale> {
     Bits(Box<bitvec::prelude::BitVec<u8, bitvec::prelude::Lsb0>>),
 }
 
+impl<'scale> Value<'scale> {
+    pub fn get(&self, path: &str) -> Option<&Value> {
+        let p: Vec<_> = path.split('.').collect();
+        let mut cur = self;
+
+        for pa in p {
+            if let Value::Object(fields) = cur {
+                if let Some((_, sub_val)) = fields.iter().find(|(name, _)| *name == pa) {
+                    cur = sub_val;
+                } else {
+                    return None;
+                }
+            }
+        }
+
+        Some(cur)
+    }
+
+    // Assume that this is an object with just one field. TODO! rename only()
+    pub fn only(&'scale self) -> Option<(&'scale str, &'scale Self)> {
+        if let Self::Object(fields) = self {
+            if fields.len() == 1 {
+                let (name, val) = &fields[0];
+                Some((name, &val))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn only2(&'scale self) -> Option<(&'scale str, &'scale str, &'scale Self)> {
+        self.only()
+            .and_then(|(head, tail)| tail.only().map(|(second, tail)| (head, second, tail)))
+    }
+
+    pub fn only3(&'scale self) -> Option<(&'scale str, &'scale str, &'scale str, &'scale Self)> {
+        self.only2().and_then(|(first, second, tail)| {
+            tail.only()
+                .map(|(third, tail)| (first, second, third, tail))
+        })
+    }
+
+    pub fn expect(&'scale self, expect1: &str) -> Option<&'scale Self> {
+        self.only().and_then(|(head, tail)| {
+            if head != expect1 {
+                return None;
+            }
+            Some(tail)
+        })
+    }
+
+    pub fn expect2(&'scale self, expect1: &str, expect2: &str) -> Option<&'scale Self> {
+        self.expect(expect1).and_then(|tail| tail.expect(expect2))
+    }
+
+    pub fn expect3(
+        &'scale self,
+        expect1: &str,
+        expect2: &str,
+        expect3: &str,
+    ) -> Option<&'scale Self> {
+        self.expect2(expect1, expect2)
+            .and_then(|tail| tail.expect(expect3))
+    }
+
+    pub fn expect4(
+        &'scale self,
+        expect1: &str,
+        expect2: &str,
+        expect3: &str,
+        expect4: &str,
+    ) -> Option<&'scale Self> {
+        self.expect3(expect1, expect2, expect3)
+            .and_then(|tail| tail.expect(expect4))
+    }
+
+    pub fn find(&'scale self, find1: &str) -> Option<&'scale Self> {
+        if let Self::Object(fields) = self {
+            for (field, val) in fields.iter() {
+                if *field == find1 {
+                    return Some(val);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn find2(&'scale self, find1: &str, find2: &str) -> Option<&'scale Self> {
+        self.find(find1).and_then(|val| {
+            if let Self::Object(fields) = val {
+                for (field, val) in fields.iter() {
+                    if *field == find2 {
+                        return Some(val);
+                    }
+                }
+            }
+            None
+        })
+    }
+}
+
 #[derive(Default)]
 pub struct ValueBuilder<'scale> {
     root: Option<Value<'scale>>,
@@ -41,7 +146,7 @@ impl<'scale> ValueBuilder<'scale> {
     pub fn parse(
         data: &'scale [u8],
         top_type_id: u32,
-        types: &scale_info::PortableRegistry,
+        types: &'scale scale_info::PortableRegistry,
     ) -> Value<'scale> {
         let mut slf = ValueBuilder::<'scale>::default();
         crate::skeleton_decode(data, top_type_id, &mut slf, types);
@@ -106,7 +211,7 @@ impl<'scale> super::VisitScale<'scale> for ValueBuilder<'scale> {
         current_path: &[(&'scale str, u32)],
         data: &'scale [u8],
         ty: &scale_info::Type<scale_info::form::PortableForm>,
-        types: &PortableRegistry
+        types: &PortableRegistry,
     ) {
         let new_val = match ty.type_def() {
             scale_info::TypeDef::Primitive(TypeDefPrimitive::Str) => Some(Value::Str(
@@ -131,18 +236,27 @@ impl<'scale> super::VisitScale<'scale> for ValueBuilder<'scale> {
                 <u128 as crate::borrow_decode::BorrowDecode>::borrow_decode(data),
             ))),
 
-            TypeDef::Sequence(_seq) => {
-                //TODO: assumed u8
+            TypeDef::Sequence(_) | TypeDef::Array(_) => {
+                // Only hits here if it's u8, otherwise it's treated as an object with many fields.
                 Some(Value::Scale(data))
             }
             TypeDef::BitSequence(_seq) => ValueBuilder::parse_bitvec(data),
             TypeDef::Compact(inner) => {
                 let inner = types.resolve(inner.type_param().id()).unwrap();
                 match inner.type_def() {
-                    TypeDef::Primitive(TypeDefPrimitive::U32) => {
-                        Some(Value::U32(<Compact<u32> as crate::borrow_decode::BorrowDecode>::borrow_decode(data).into()))
-                    },
-                    _ => panic!("unsupported {:?}", inner)
+                    TypeDef::Primitive(TypeDefPrimitive::U32) => Some(Value::U32(
+                        <Compact<u32> as crate::borrow_decode::BorrowDecode>::borrow_decode(data)
+                            .into(),
+                    )),
+                    TypeDef::Primitive(TypeDefPrimitive::U64) => Some(Value::U64(
+                        <Compact<u64> as crate::borrow_decode::BorrowDecode>::borrow_decode(data)
+                            .into(),
+                    )),
+                    TypeDef::Primitive(TypeDefPrimitive::U128) => Some(Value::U128(Box::new(
+                        <Compact<u128> as crate::borrow_decode::BorrowDecode>::borrow_decode(data)
+                            .into(),
+                    ))),
+                    _ => panic!("unsupported {:?}", inner),
                 }
             }
             _ => {

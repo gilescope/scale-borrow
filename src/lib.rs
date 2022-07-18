@@ -6,11 +6,17 @@ use scale_info::Type;
 use scale_info::{TypeDef, TypeDefPrimitive};
 pub trait VisitScale<'scale> {
     // Visit value on current object
-    fn visit(&mut self, path: &[(&'scale str, u32)], data: &'scale [u8], ty: &Type<PortableForm>, types: &PortableRegistry);
+    fn visit(
+        &mut self,
+        path: &[(&'scale str, u32)],
+        data: &'scale [u8],
+        ty: &'scale Type<PortableForm>,
+        types: &'scale PortableRegistry,
+    );
 }
 pub mod borrow_decode;
 pub mod value;
-pub use value::{ValueBuilder, Value};
+pub use value::{Value, ValueBuilder};
 
 #[macro_export]
 macro_rules! descale {
@@ -24,7 +30,7 @@ macro_rules! descale {
         }
 
         impl <$scale> $n<$scale> {
-            fn parse(data: &'scale [u8], top_type: UntrackedSymbol<TypeId>, types: &scale_info::PortableRegistry) -> $n<$scale> {
+            fn parse(data: &'scale [u8], top_type: UntrackedSymbol<TypeId>, types: &'scale scale_info::PortableRegistry) -> $n<$scale> {
                 let mut slf = $n::<$scale>::default();
                 crate::skeleton_decode(data, top_type.id(), &mut slf, types);
                 slf
@@ -32,7 +38,7 @@ macro_rules! descale {
         }
 
         impl <'scale> VisitScale<'scale> for $n<$scale> {
-            fn visit(&mut self, current_path: &[(&'scale str,u32)], data: &'scale [u8], _ty: &scale_info::Type<scale_info::form::PortableForm>, _types: &PortableRegistry) {
+            fn visit(&mut self, current_path: &[(&'scale str,u32)], data: &'scale [u8], _ty: &'scale scale_info::Type<scale_info::form::PortableForm>, _types: &'scale PortableRegistry) {
                 $(
                     let p: Vec<_> = $path.split('.').collect();//TODO: do earlier.
                     // println!("visited path {:?} == {:?}", current_path, p);
@@ -55,7 +61,7 @@ pub fn skeleton_decode<'scale>(
     data: &'scale [u8],
     ty_id: u32,
     visitor: &mut impl VisitScale<'scale>,
-    types: &PortableRegistry,
+    types: &'scale PortableRegistry,
 ) {
     let id = ty_id;
     let ty = types.resolve(id).unwrap();
@@ -68,26 +74,28 @@ static NUMS: &[&str] = &["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
 fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
     mut stack: Vec<(&'scale str, u32)>,
     data: &mut &'scale [u8],
-    ty: &Type<PortableForm>,
+    ty: &'scale Type<PortableForm>,
     id: u32,
     visitor: &mut V,
-    types: &PortableRegistry,
+    types: &'scale PortableRegistry,
 ) -> Vec<(&'scale str, u32)> {
     println!("decode {:#?} - left {}", ty.type_def(), data.len());
+    let original_len = data.len();
     match ty.type_def() {
         TypeDef::Composite(inner) => {
             for (i, field) in inner.fields().iter().enumerate() {
                 let id = field.ty().id();
                 let field_ty = types.resolve(id).unwrap();
                 let s: &'scale str = NUMS[i];
-                let fieldname: &'scale str = field.name().unwrap_or(&s);
+                let fieldname: &'scale str = field.name().map(|s| s.make_str()).unwrap_or(&s);
                 stack.push((fieldname, id));
                 stack = semi_decode_aux(stack, data, field_ty, id, visitor, types);
                 stack.pop();
             }
         }
         TypeDef::Variant(var) => {
-            let (&discriminant, mut data) = data.split_first().unwrap();
+            let (&discriminant, data_new) = data.split_first().unwrap();
+            *data = data_new;
             let variant = var
                 .variants()
                 .iter()
@@ -99,9 +107,14 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
                 let id = field.ty().id();
                 let field_ty = types.resolve(id).unwrap();
                 let s: &'scale str = NUMS[i];
-                let fieldname: &'scale str = field.name().unwrap_or(&s);
+
+                let fieldname: &'scale str = if let Some(name) = field.name() {
+                    (*name).make_str()
+                } else {
+                    &s
+                };
                 stack.push((fieldname, id));
-                stack = semi_decode_aux(stack, &mut data, field_ty, id, visitor, types);
+                stack = semi_decode_aux(stack, data, field_ty, id, visitor, types);
                 stack.pop();
             }
             stack.pop();
@@ -148,6 +161,26 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
             let ty_inner = types.resolve(ty_id.id()).unwrap();
             if *ty_inner.type_def() == TypeDef::Primitive(TypeDefPrimitive::U8) {
                 visitor.visit(&stack, &data[..len as usize], ty, types);
+                *data = &data[usize::try_from(len).unwrap()..];
+            } else {
+                println!("seq len = {}", len);
+                for i in NUMS.iter().take(len as usize) {
+                    // println!("i = {}", i);println!("bytes left to decode start: {:?}", &data);
+                    stack.push((i, ty_id.id()));
+                    // NB: this call must move the data slice onwards.
+                    stack = semi_decode_aux(stack, data, ty_inner, ty_id.id(), visitor, types);
+                    // println!("bytes left to decode end  : {:?}", &data);
+                    stack.pop();
+                }
+            }
+        }
+        TypeDef::Array(arr) => {
+            let len: u32 = arr.len();
+            let ty_id = arr.type_param();
+            let ty_inner = types.resolve(ty_id.id()).unwrap();
+            if *ty_inner.type_def() == TypeDef::Primitive(TypeDefPrimitive::U8) {
+                visitor.visit(&stack, &data[..len as usize], ty, types);
+                *data = &data[len as usize..];
             } else {
                 println!("seq len = {}", len);
                 for i in NUMS.iter().take(len as usize) {
@@ -178,8 +211,19 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
                 TypeDef::Primitive(TypeDefPrimitive::U32) => {
                     visitor.visit(&stack, &data, ty, types);
                     Compact::<u32>::skip(data).unwrap();
-                },
-                 _ => panic!("unsupported compact size - send PR please."),
+                }
+                TypeDef::Primitive(TypeDefPrimitive::U64) => {
+                    visitor.visit(&stack, &data, ty, types);
+                    Compact::<u64>::skip(data).unwrap();
+                }
+                TypeDef::Primitive(TypeDefPrimitive::U128) => {
+                    visitor.visit(&stack, &data, ty, types);
+                    Compact::<u128>::skip(data).unwrap();
+                }
+                _ => panic!(
+                    "unsupported compact size - send PR please. {:?}",
+                    ty_inner.type_def()
+                ),
             }
             //  panic!("don't understand a {:?}", ty_inner.type_def());
         }
@@ -187,7 +231,25 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
             panic!("don't understand a {:?}", ty.type_def());
         }
     }
+    assert!(data.len() < original_len, "failed to make any progress!");
     stack
+}
+
+// This is a hack to work around the T:String type being either String or &str.
+trait ToStr<T> {
+    fn make_str(&self) -> &str;
+}
+
+impl ToStr<&str> for &str {
+    fn make_str<'a>(&'a self) -> &'a str {
+        self
+    }
+}
+
+impl ToStr<String> for String {
+    fn make_str(&self) -> &str {
+        self.as_str()
+    }
 }
 
 #[cfg(test)]
