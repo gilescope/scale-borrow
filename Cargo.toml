@@ -21,6 +21,7 @@ bitvec = { version="1.0", defualt-features=false, features = [] }
 # frame-metadata = { version="15.0", default-features = false, features = ["v14"] }
 frame-metadata = { git="https://github.com/integritee-network/frame-metadata.git", default-features = false, features = ["v14", "full_derive"] }
 
+wasm-bindgen-test = "0.3.0"
 
 [features]
 default = []

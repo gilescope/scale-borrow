@@ -260,6 +260,7 @@ mod tests {
     use scale_info::interner::UntrackedSymbol;
     use scale_info::prelude::any::TypeId;
     use scale_info::PortableRegistry;
+    use wasm_bindgen_test::*;
 
     /// Given a type definition, return the PortableType and PortableRegistry
     /// that our decode functions expect.
@@ -273,6 +274,7 @@ mod tests {
         (id, portable_registry)
     }
 
+    #[wasm_bindgen_test]
     #[test]
     fn bool_test() {
         let val = false;
@@ -284,6 +286,7 @@ mod tests {
         assert_eq!(val, Value::Bool(false));
     }
 
+    #[wasm_bindgen_test]
     #[test]
     #[cfg(feature = "bitvec")]
     fn bitvec_test() {
@@ -297,6 +300,7 @@ mod tests {
         assert_eq!(val, Value::Bits(Box::new(bitvec![u8, Lsb0;])));
     }
 
+    #[wasm_bindgen_test]
     #[test]
     #[cfg(not(feature = "bitvec"))]
     fn bitvec_test2() {
@@ -310,6 +314,7 @@ mod tests {
         assert_eq!(val, Value::Scale(&[0]));
     }
 
+    #[wasm_bindgen_test]
     #[test]
     fn string_test() {
         let val = "hello string";
@@ -325,6 +330,7 @@ mod tests {
         }
     }
 
+    #[wasm_bindgen_test]
     #[test]
     fn struct_test() {
         // Only try and decode the bool
@@ -364,6 +370,7 @@ mod tests {
         );
     }
 
+    #[wasm_bindgen_test]
     #[test]
     fn enum_test() {
         // Only try and decode the bool
@@ -403,6 +410,7 @@ mod tests {
         );
     }
 
+    #[wasm_bindgen_test]
     #[test]
     fn tuple_test() {
         // Only try and decode the bool
@@ -443,6 +451,7 @@ mod tests {
         );
     }
 
+    #[wasm_bindgen_test]
     #[test]
     fn slice_u8_test() {
         // Only try and decode the bool
@@ -476,6 +485,7 @@ mod tests {
         );
     }
 
+    #[wasm_bindgen_test]
     #[test]
     fn num_tests() {
         // Only try and decode the bool
@@ -533,6 +543,7 @@ mod tests {
         );
     }
 
+    #[wasm_bindgen_test]
     #[test]
     fn array_test() {
         #[derive(Decode, Encode, scale_info::TypeInfo)]
@@ -607,7 +618,7 @@ mod tests {
 
     #[test]
     fn test_value() {
-        assert_eq!(std::mem::size_of::<super::value::Value>(), 24);
+        assert_eq!(std::mem::size_of::<super::value::Value>(), 24); // 16 in wasm32
         assert_eq!(std::mem::size_of::<u128>(), 16);
     }
 }
