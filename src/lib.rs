@@ -87,7 +87,7 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
                 let id = field.ty().id();
                 let field_ty = types.resolve(id).unwrap();
                 let s: &'scale str = NUMS[i];
-                let fieldname: &'scale str = field.name().map(|s| s.make_str()).unwrap_or(&s);
+                let fieldname: &'scale str = field.name().map(|s| s.make_str()).unwrap_or(s);
                 stack.push((fieldname, id));
                 stack = semi_decode_aux(stack, data, field_ty, id, visitor, types);
                 stack.pop();
@@ -111,7 +111,7 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
                 let fieldname: &'scale str = if let Some(name) = field.name() {
                     (*name).make_str()
                 } else {
-                    &s
+                    s
                 };
                 stack.push((fieldname, id));
                 stack = semi_decode_aux(stack, data, field_ty, id, visitor, types);
@@ -209,15 +209,15 @@ fn semi_decode_aux<'scale, V: VisitScale<'scale>>(
 
             match ty_inner.type_def() {
                 TypeDef::Primitive(TypeDefPrimitive::U32) => {
-                    visitor.visit(&stack, &data, ty, types);
+                    visitor.visit(&stack, data, ty, types);
                     Compact::<u32>::skip(data).unwrap();
                 }
                 TypeDef::Primitive(TypeDefPrimitive::U64) => {
-                    visitor.visit(&stack, &data, ty, types);
+                    visitor.visit(&stack, data, ty, types);
                     Compact::<u64>::skip(data).unwrap();
                 }
                 TypeDef::Primitive(TypeDefPrimitive::U128) => {
-                    visitor.visit(&stack, &data, ty, types);
+                    visitor.visit(&stack, data, ty, types);
                     Compact::<u128>::skip(data).unwrap();
                 }
                 _ => panic!(
@@ -241,7 +241,7 @@ trait ToStr<T> {
 }
 
 impl ToStr<&str> for &str {
-    fn make_str<'a>(&'a self) -> &'a str {
+    fn make_str(&self) -> &str {
         self
     }
 }

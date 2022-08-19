@@ -25,13 +25,27 @@ pub enum Value<'scale> {
     U64(u64),
     U128(Box<u128>),
     I128(Box<i128>),
-    // // / An unsigned 256 bit number (internally represented as a 32 byte array).
+    /// An unsigned 256 bit number (internally represented as a 32 byte array).
     U256(&'scale [u8; 32]),
-    // // / A signed 256 bit number (internally represented as a 32 byte array).
+    /// A signed 256 bit number (internally represented as a 32 byte array).
     I256(&'scale [u8; 32]),
 
     #[cfg(feature = "bitvec")]
     Bits(Box<bitvec::prelude::BitVec<u8, bitvec::prelude::Lsb0>>),
+}
+
+impl <'scale> IntoIterator for Value<'scale> {
+    type Item=(&'scale str, Value<'scale>);
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        if let Self::Object(vals) = self {
+            vals.into_iter()
+        } else {
+            debug_assert!(false); // This is not a good sign.
+            vec![].into_iter()
+        }
+    }
 }
 
 impl<'scale> Value<'scale> {
@@ -57,7 +71,7 @@ impl<'scale> Value<'scale> {
         if let Self::Object(fields) = self {
             if fields.len() == 1 {
                 let (name, val) = &fields[0];
-                Some((name, &val))
+                Some((name, val))
             } else {
                 None
             }
