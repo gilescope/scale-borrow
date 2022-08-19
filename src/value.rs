@@ -34,16 +34,17 @@ pub enum Value<'scale> {
     Bits(Box<bitvec::prelude::BitVec<u8, bitvec::prelude::Lsb0>>),
 }
 
-impl <'scale> IntoIterator for Value<'scale> {
-    type Item=(&'scale str, Value<'scale>);
-    type IntoIter = std::vec::IntoIter<Self::Item>;
+impl<'a, 'scale> IntoIterator for &'a Value<'scale> {
+    type Item = &'a (&'scale str, Value<'scale>);
+    type IntoIter = core::slice::Iter<'a, (&'scale str, Value<'scale>)>;
 
     fn into_iter(self) -> Self::IntoIter {
-        if let Self::Object(vals) = self {
-            vals.into_iter()
+        if let Value::Object(ref vals) = *self {
+            vals.iter()
         } else {
             debug_assert!(false); // This is not a good sign.
-            vec![].into_iter()
+            todo!();
+            // vec![].iter()
         }
     }
 }
@@ -300,5 +301,20 @@ impl<'scale> super::VisitScale<'scale> for ValueBuilder<'scale> {
             last,
             new_val.unwrap(),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Value;
+
+    #[test]
+    fn test_iter() {
+        let val = Value::Object(Box::new(vec![("0", Value::U32(0)), ("1", Value::U32(1))]));
+
+        let it = val.into_iter();
+        for i in it {
+            println!("{:?}", i);
+        }
     }
 }
