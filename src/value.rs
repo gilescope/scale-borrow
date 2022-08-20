@@ -43,18 +43,18 @@ impl<'scale> Display for Value<'scale> {
         const TRUNC_LEN: usize = 100;
         match self {
             Self::Object(contents) => {
-                write!(f, "Object(").unwrap();
+                write!(f, "{{").unwrap();
                 let mut first = true;
                 for (k, v) in contents.iter() {
                     if !first {
                         write!(f, ", ").unwrap();
                     }
                     k.fmt(f).unwrap();
-                    write!(f, " = ").unwrap();
+                    write!(f, ": ").unwrap();
                     v.fmt(f).unwrap();
                     first = false;
                 }
-                write!(f, ")").unwrap();
+                write!(f, "}}").unwrap();
             }
             Self::Scale(slice) => {
                 if slice.len() <= TRUNC_LEN {
@@ -375,7 +375,7 @@ mod tests {
         ]));
 
         assert_eq!(
-            r#"Object(0 = U32(0), 1 = Scale(0x0102030411121314))"#,
+            r#"{0: U32(0), 1: Scale(0x0102030411121314)}"#,
             val.to_string()
         );
 
@@ -386,7 +386,7 @@ mod tests {
         ]));
 
         assert_eq!(
-            r#"Object(0 = U32(0), 1 = Scale(0x07070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707...))"#,
+            r#"{0: U32(0), 1: Scale(0x07070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707...)}"#,
             val.to_string()
         );
     }
