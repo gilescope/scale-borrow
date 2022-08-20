@@ -6,23 +6,36 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-parity-scale-codec = { version = "3.1.5", default-features = false, features = ["full"] }
-scale-info = { version= "2.1", default-features = false, features = []  }
+parity-scale-codec = { version = "3.1.5", default-features = false, features = [
+    "full",
+] }
+scale-info = { version = "2.1", default-features = false, features = [] }
 # scale-info = { path="/home/gilescope/git/scale-info/", default-features = false, features = ["dogfood"]  }
 
-bitvec = { version="1.0", default-features=false, features = [], optional = true }
+bitvec = { version = "1.0", default-features = false, features = [
+], optional = true }
+hex = { version = "*", optional = true }
 
 [dev-dependencies]
-parity-scale-codec = { version = "3.1.5", default-features = false, features = ["bit-vec","full"] }
-scale-info = { version= "2.1", default-features = false, features = ["bit-vec"]  }
+parity-scale-codec = { version = "3.1.5", default-features = false, features = [
+    "bit-vec",
+    "full",
+] }
+scale-info = { version = "2.1", default-features = false, features = [
+    "bit-vec",
+] }
 # scale-info = { path="/home/gilescope/git/scale-info/", default-features = false, features = ["dogfood", "bit-vec"]  }
-bitvec = { version="1.0", default-features=false, features = [] }
+bitvec = { version = "1.0", default-features = false, features = [] }
 
 # frame-metadata = { version="15.0", default-features = false, features = ["v14"] }
-frame-metadata = { git="https://github.com/integritee-network/frame-metadata.git", default-features = false, features = ["v14", "full_derive"] }
+frame-metadata = { git = "https://github.com/integritee-network/frame-metadata.git", default-features = false, features = [
+    "v14",
+    "full_derive",
+] }
 
 wasm-bindgen-test = "0.3.0"
 
 [features]
-default = []
+default = ["display"]
+display = ["hex"]
 bitvec = ["dep:bitvec", "parity-scale-codec/bit-vec", "scale-info/bit-vec"]

@@ -3,6 +3,9 @@ use scale_info::PortableRegistry;
 use scale_info::TypeDef;
 use scale_info::TypeDefPrimitive;
 
+#[cfg(feature = "display")]
+use core::fmt::{Display, Formatter};
+
 /// The underlying shape of a given value.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value<'scale> {
@@ -32,6 +35,50 @@ pub enum Value<'scale> {
 
     #[cfg(feature = "bitvec")]
     Bits(Box<bitvec::prelude::BitVec<u8, bitvec::prelude::Lsb0>>),
+}
+
+#[cfg(feature = "display")]
+impl<'scale> Display for Value<'scale> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        const TRUNC_LEN: usize = 100;
+        match self {
+            Self::Object(contents) => {
+                write!(f, "Object(").unwrap();
+                let mut first = true;
+                for (k, v) in contents.iter() {
+                    if !first {
+                        write!(f, ", ").unwrap();
+                    }
+                    k.fmt(f).unwrap();
+                    write!(f, " = ").unwrap();
+                    v.fmt(f).unwrap();
+                    first = false;
+                }
+                write!(f, ")").unwrap();
+            }
+            Self::Scale(slice) => {
+                if slice.len() <= TRUNC_LEN {
+                    write!(f, "Scale(0x{})", hex::encode(slice)).unwrap();
+                } else {
+                    write!(f, "Scale(0x{}...)", hex::encode(&slice[..TRUNC_LEN - 3])).unwrap();
+                }
+            }
+            Self::ScaleOwned(v) => {
+                if v.len() <= TRUNC_LEN {
+                    write!(f, "ScaleOwned(0x{})", hex::encode(v.as_slice())).unwrap();
+                } else {
+                    write!(
+                        f,
+                        "ScaleOwned(0x{}...)",
+                        hex::encode(&v.as_slice()[..TRUNC_LEN - 3])
+                    )
+                    .unwrap();
+                }
+            }
+            _ => <Self as core::fmt::Debug>::fmt(self, f).unwrap(),
+        };
+        Ok(())
+    }
 }
 
 impl<'a, 'scale> IntoIterator for &'a Value<'scale> {
@@ -316,5 +363,31 @@ mod tests {
         for i in it {
             println!("{:?}", i);
         }
+    }
+
+    #[test]
+    #[cfg(feature = "display")]
+    fn test_display() {
+        let data = &[1, 2, 3, 4, 17, 18, 19, 20];
+        let val = Value::Object(Box::new(vec![
+            ("0", Value::U32(0)),
+            ("1", Value::Scale(data)),
+        ]));
+
+        assert_eq!(
+            r#"Object(0 = U32(0), 1 = Scale(0x0102030411121314))"#,
+            val.to_string()
+        );
+
+        let data = &[7; 200];
+        let val = Value::Object(Box::new(vec![
+            ("0", Value::U32(0)),
+            ("1", Value::Scale(data)),
+        ]));
+
+        assert_eq!(
+            r#"Object(0 = U32(0), 1 = Scale(0x07070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707...))"#,
+            val.to_string()
+        );
     }
 }
