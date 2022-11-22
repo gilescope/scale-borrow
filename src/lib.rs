@@ -391,33 +391,33 @@ mod tests {
         assert_eq!(val, Value::Bool(false));
     }
 
-    #[wasm_bindgen_test]
-    #[test]
-    #[cfg(feature = "bitvec")]
-    fn bitvec_test() {
-        use bitvec::prelude::*;
-        let val = bitvec![u8, Msb0;];
-        let encoded = val.encode();
+    // #[wasm_bindgen_test]
+    // #[test]
+    // #[cfg(feature = "bitvec")]
+    // fn bitvec_test() {
+    //     use bitvec::prelude::*;
+    //     let val = bitvec![u8, Msb0;];
+    //     let encoded = val.encode();
 
-        let (id, types) = make_type::<BitVec<u8, bitvec::order::Lsb0>>();
+    //     let (id, types) = make_type::<BitVec<u8, bitvec::order::Lsb0>>();
 
-        let val = ValueBuilder::parse(&encoded, id, &types);
-        assert_eq!(val, Value::Bits(Box::new(bitvec![u8, Lsb0;])));
-    }
+    //     let val = ValueBuilder::parse(&encoded, id, &types);
+    //     assert_eq!(val, Value::Bits(Box::new(bitvec![u8, Lsb0;])));
+    // }
 
-    #[wasm_bindgen_test]
-    #[test]
-    #[cfg(not(feature = "bitvec"))]
-    fn bitvec_test2() {
-        use bitvec::prelude::*;
-        let val = bitvec![u8, Msb0;];
-        let encoded = val.encode();
+    // #[wasm_bindgen_test]
+    // #[test]
+    // #[cfg(not(feature = "bitvec"))]
+    // fn bitvec_test2() {
+    //     // use bitvec::prelude::*;
+    //     let val = bitvec![u8, Msb0;];
+    //     let encoded = val.encode();
 
-        let (id, types) = make_type::<BitVec<u8, bitvec::order::Lsb0>>();
+    //     let (id, types) = make_type::<BitVec<u8, bitvec::order::Lsb0>>();
 
-        let val = ValueBuilder::parse(&encoded, id.id(), &types);
-        assert_eq!(val, Value::Scale(&[0]));
-    }
+    //     let val = ValueBuilder::parse(&encoded, id.id(), &types);
+    //     assert_eq!(val, Value::Scale(&[0]));
+    // }
 
     #[wasm_bindgen_test]
     #[test]

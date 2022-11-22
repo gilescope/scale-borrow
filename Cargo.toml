@@ -11,11 +11,11 @@ parity-scale-codec = { version = "3.2.1", default-features = false, features = [
 ] }
 scale-info = { version = "2.3", default-features = false, features = [] }
 # scale-info = { path="/home/gilescope/git/scale-info/", default-features = false, features = ["dogfood"]  }
-
+scale-value = { git="http://github.com/paritytech/scale-value.git" }
 # scale-decode="*"
 
-bitvec = { version = "1.0", default-features = false, features = [
-], optional = true }
+# bitvec = { version = "1.0", default-features = false, features = [
+# ], optional = true }
 hex = { version = "*", optional = true }
 
 [dev-dependencies]
@@ -27,7 +27,7 @@ scale-info = { version = "2.3", default-features = false, features = [
     "bit-vec",
 ] }
 # scale-info = { path="/home/gilescope/git/scale-info/", default-features = false, features = ["dogfood", "bit-vec"]  }
-bitvec = { version = "1.0", default-features = false, features = [] }
+# bitvec = { version = "1.0", default-features = false, features = [] }
 
 # frame-metadata = { version="15.0", default-features = false, features = ["v14"] }
 # frame-metadata = { git = "https://github.com/integritee-network/frame-metadata.git", default-features = false, features = [
@@ -42,4 +42,4 @@ wasm-bindgen-test = "0.3.0"
 [features]
 default = ["display"]
 display = ["hex"]
-bitvec = ["dep:bitvec", "parity-scale-codec/bit-vec", "scale-info/bit-vec"]
+bitvec = ["parity-scale-codec/bit-vec", "scale-info/bit-vec"]

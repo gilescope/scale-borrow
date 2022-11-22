@@ -38,7 +38,7 @@ pub enum Value<'scale> {
     I256(&'scale [u8; 32]),
 
     #[cfg(feature = "bitvec")]
-    Bits(Box<bitvec::prelude::BitVec<u8, bitvec::prelude::Lsb0>>),
+    Bits(Box<scale_value::BitSequence>),
 }
 
 #[cfg(feature = "display")]
@@ -263,11 +263,13 @@ impl<'scale> ValueBuilder<'scale> {
     #[inline]
     fn parse_bitvec(mut data: &'scale [u8]) -> Option<Value> {
         assert_eq!(data.len(), 1, "bitvec size not suppored - please send pr.");
+        use parity_scale_codec::Decode;
         Some(
              Value::Bits(Box::new(
-                <bitvec::prelude::BitVec<u8, bitvec::prelude::Lsb0>
-                as
-                parity_scale_codec::Decode>::decode(&mut data).unwrap())))
+                scale_value::BitSequence::decode(&mut data).unwrap())))
+                // <bitvec::prelude::BitVec<u8, bitvec::prelude::Lsb0>
+                // as
+                // parity_scale_codec::Decode>::decode(&mut data).unwrap())))
     }
 }
 
