@@ -9,7 +9,7 @@ edition = "2021"
 parity-scale-codec = { version = "3.2.1", default-features = false, features = [
     "full",
 ] }
-scale-info = { version = "2.1", default-features = false, features = [] }
+scale-info = { version = "2.3", default-features = false, features = [] }
 # scale-info = { path="/home/gilescope/git/scale-info/", default-features = false, features = ["dogfood"]  }
 
 # scale-decode="*"
@@ -23,7 +23,7 @@ parity-scale-codec = { version = "3.2.1", default-features = false, features = [
     "bit-vec",
     "full",
 ] }
-scale-info = { version = "2.1", default-features = false, features = [
+scale-info = { version = "2.3", default-features = false, features = [
     "bit-vec",
 ] }
 # scale-info = { path="/home/gilescope/git/scale-info/", default-features = false, features = ["dogfood", "bit-vec"]  }
