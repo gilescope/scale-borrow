@@ -17,6 +17,7 @@ pub trait VisitScale<'scale> {
 pub mod borrow_decode;
 pub mod value;
 pub use value::{Value, ValueBuilder};
+// use scale_decode::visitor::{self, TypeId};
 
 #[macro_export]
 macro_rules! descale {
@@ -69,6 +70,110 @@ pub fn skeleton_decode<'scale>(
     let cursor = &mut &*data;
     semi_decode_aux(vec, cursor, ty, id, visitor, types);
 }
+
+// struct BorrowVisitor<'scale> {
+//     raw_scale : &'scale[u8]
+// }
+
+// impl <'scale> scale_decode::visitor::Visitor for BorrowVisitor<'scale> {
+//     type Value = crate::Value<'scale>;
+//     type Error = scale_decode::visitor::DecodeError;
+
+//     fn visit_bool(self, value: bool, _type_id: TypeId) -> Result<Self::Value, Self::Error> {
+// 		Ok(Value::Bool(value))
+// 	}
+// 	fn visit_char(self, value: char, _type_id: TypeId) -> Result<Self::Value, Self::Error> {
+// 		Ok(Value::Char(value))
+// 	}
+// 	fn visit_u8(self, value: u8, _type_id: TypeId) -> Result<Self::Value, Self::Error> {
+// 		Ok(Value::U8(value))
+// 	}
+// 	fn visit_u16(self, value: u16, _type_id: TypeId) -> Result<Self::Value, Self::Error> {
+// 		Ok(Value::U16(value))
+// 	}
+// 	fn visit_u32(self, value: u32, _type_id: TypeId) -> Result<Self::Value, Self::Error> {
+// 		Ok(Value::U32(value))
+// 	}
+// 	fn visit_u64(self, value: u64, _type_id: TypeId) -> Result<Self::Value, Self::Error> {
+// 		Ok(Value::U64(value))
+// 	}
+// 	fn visit_u128(self, value: u128, _type_id: TypeId) -> Result<Self::Value, Self::Error> {
+// 		Ok(Value::U128(Box::new(value)))
+// 	}
+// 	fn visit_u256(self, value: &[u8; 32], _type_id: TypeId) -> Result<Self::Value, Self::Error> {
+//         todo!("lifetime issues")
+// 		// Ok(Value::U256(value))
+// 	}
+// 	fn visit_i8(self, value: i8, _type_id: TypeId) -> Result<Self::Value, Self::Error> {
+// 		Ok(Value::I8(value))
+// 	}
+// 	fn visit_i16(self, value: i16, _type_id: TypeId) -> Result<Self::Value, Self::Error> {
+// 		Ok(Value::I16(value))
+// 	}
+// 	fn visit_i32(self, value: i32, _type_id: TypeId) -> Result<Self::Value, Self::Error> {
+// 		Ok(Value::I32(value))
+// 	}
+// 	fn visit_i64(self, value: i64, _type_id: TypeId) -> Result<Self::Value, Self::Error> {
+// 		Ok(Value::I64(value))
+// 	}
+// 	fn visit_i128(self, value: i128, _type_id: TypeId) -> Result<Self::Value, Self::Error> {
+// 		Ok(Value::I128(Box::new(value)))
+// 	}
+// 	fn visit_i256(self, value: &[u8; 32], _type_id: TypeId) -> Result<Self::Value, Self::Error> 
+//         // where 'scale : 'a
+//     {
+// 		// Ok(Value::I256(value))
+//         todo!("lifetime issues")
+// 	}
+// 	fn visit_sequence(
+// 		self,
+// 		_value: &mut scale_decode::visitor::Sequence,
+// 		_type_id: TypeId,
+// 	) -> Result<Self::Value, Self::Error> {
+// 		todo!();
+// 	}
+// 	fn visit_composite(
+// 		self,
+// 		_value: &mut scale_decode::visitor::Composite,
+// 		_type_id: TypeId,
+// 	) -> Result<Self::Value, Self::Error> {
+// 		todo!();
+// 	}
+
+// 	fn visit_tuple(self, _value: &mut scale_decode::visitor::Tuple, _type_id: TypeId) -> Result<Self::Value, Self::Error> {
+// 		todo!();
+// 	}
+
+// 	fn visit_str<'a>(self, value: scale_decode::visitor::Str<'a>, _type_id: TypeId) -> Result<Self::Value, Self::Error> {
+// 		Ok(Value::Str(value.as_str().unwrap())) //TODO
+// 	}
+
+// 	fn visit_array(self, _value: &mut scale_decode::visitor::Array, _type_id: TypeId) -> Result<Self::Value, Self::Error> {
+//         todo!();
+// //		Ok(())
+// 	}
+
+// 	fn visit_variant(
+// 		self,
+// 		_value: &mut scale_decode::visitor::Variant,
+// 		_type_id: TypeId,
+// 	) -> Result<Self::Value, Self::Error> {
+// 	      todo!();
+// //		Ok(())
+// 	}
+
+// 	fn visit_bitsequence(
+// 		self,
+// 		value: &mut scale_decode::visitor::BitSequence,
+// 		_type_id: TypeId,
+// 	) -> Result<Self::Value, Self::Error> {
+//         #[cfg(not(feature = "bitvec"))]
+//         panic!("Unsupported: use bitvec feature to turn this support on.");
+//         #[cfg(feature = "bitvec")]
+// 		Ok(Value::Bits(value).unwrap())
+// 	}
+// }
+
 
 static NUMS: &[&str] = &["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
 fn semi_decode_aux<'scale, V: VisitScale<'scale>>(

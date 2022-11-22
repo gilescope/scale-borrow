@@ -27,6 +27,10 @@ pub enum Value<'scale> {
     U32(u32),
     U64(u64),
     U128(Box<u128>),
+    I8(i8),
+    I16(i16),
+    I32(i32),
+    I64(i64),
     I128(Box<i128>),
     /// An unsigned 256 bit number (internally represented as a 32 byte array).
     U256(&'scale [u8; 32]),
