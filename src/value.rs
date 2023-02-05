@@ -1,27 +1,18 @@
-use parity_scale_codec::Compact;
-use scale_info::PortableRegistry;
-use scale_info::TypeDef;
-use scale_info::TypeDefPrimitive;
-
 #[cfg(feature = "display")]
 use core::fmt::{Display, Formatter};
 
 /// The underlying shape of a given value.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Value<'scale> {
+#[derive(Clone, Debug)]
+pub enum Value<'scale, 'info> {
     /// A named or unnamed struct-like, array-like or tuple-like set of values.
-    Object(Box<Vec<(&'scale str, Value<'scale>)>>), // Could this be an array rather than a vec?
-    // // UnamedComposite(&'scale Vec<Value<T>>)
-    // /// An enum variant.
-    // Variant(&'scale (&'scale str, &'scale Value<'scale>)),
-    // Truth
+    Object(Box<Vec<(&'info str, Value<'scale, 'info>)>>),
+
     Bool(bool),
     Char(char),
     Str(&'scale str),
     Scale(&'scale [u8]),
     // Escape hatch for when you can't borrow.
     ScaleOwned(Box<Vec<u8>>),
-    // Array(Box<Vec<Value<'scale>>>),
     U8(u8),
     U16(u16),
     U32(u32),
@@ -36,13 +27,38 @@ pub enum Value<'scale> {
     U256(&'scale [u8; 32]),
     /// A signed 256 bit number (internally represented as a 32 byte array).
     I256(&'scale [u8; 32]),
+    Bits(Box<scale_bits::scale::Decoder<'scale>>),
+}
 
-    #[cfg(feature = "bitvec")]
-    Bits(Box<scale_value::BitSequence>),
+impl<'scale, 'info> PartialEq for Value<'scale, 'info> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Object(val1), Value::Object(val2)) => val1 == val2,
+            (Value::Bool(val1), Value::Bool(val2)) => val1 == val2,
+            (Value::Char(val1), Value::Char(val2)) => val1 == val2,
+            (Value::Str(val1), Value::Str(val2)) => val1 == val2,
+            (Value::Scale(val1), Value::Scale(val2)) => val1 == val2,
+            (Value::ScaleOwned(val1), Value::ScaleOwned(val2)) => val1 == val2,
+            (Value::U8(val1), Value::U8(val2)) => val1 == val2,
+            (Value::U16(val1), Value::U16(val2)) => val1 == val2,
+            (Value::U32(val1), Value::U32(val2)) => val1 == val2,
+            (Value::U64(val1), Value::U64(val2)) => val1 == val2,
+            (Value::U128(val1), Value::U128(val2)) => val1 == val2,
+            (Value::U256(val1), Value::U256(val2)) => val1 == val2,
+            (Value::I8(val1), Value::I8(val2)) => val1 == val2,
+            (Value::I16(val1), Value::I16(val2)) => val1 == val2,
+            (Value::I32(val1), Value::I32(val2)) => val1 == val2,
+            (Value::I64(val1), Value::I64(val2)) => val1 == val2,
+            (Value::I128(val1), Value::I128(val2)) => val1 == val2,
+            (Value::I256(val1), Value::I256(val2)) => val1 == val2,
+            (Value::Bits(_val1), Value::Bits(_val2)) => true, //TODO: can we do better than this?
+            _ => false,
+        }
+    }
 }
 
 #[cfg(feature = "display")]
-impl<'scale> Display for Value<'scale> {
+impl<'scale, 'info> Display for Value<'scale, 'info> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         const TRUNC_LEN: usize = 100;
         match self {
@@ -85,9 +101,12 @@ impl<'scale> Display for Value<'scale> {
     }
 }
 
-impl<'a, 'scale> IntoIterator for &'a Value<'scale> {
-    type Item = &'a (&'scale str, Value<'scale>);
-    type IntoIter = core::slice::Iter<'a, (&'scale str, Value<'scale>)>;
+impl<'a, 'scale, 'info> IntoIterator for &'a Value<'scale, 'info>
+where
+    'info: 'scale,
+{
+    type Item = &'a (&'scale str, Value<'scale, 'info>);
+    type IntoIter = core::slice::Iter<'a, (&'scale str, Value<'scale, 'info>)>;
 
     fn into_iter(self) -> Self::IntoIter {
         if let Value::Object(ref vals) = *self {
@@ -100,7 +119,7 @@ impl<'a, 'scale> IntoIterator for &'a Value<'scale> {
     }
 }
 
-impl<'scale> Value<'scale> {
+impl<'scale, 'info> Value<'scale, 'info> {
     pub fn get(&self, path: &str) -> Option<&Value> {
         let p: Vec<_> = path.split('.').collect();
         let mut cur = self;
@@ -200,160 +219,6 @@ impl<'scale> Value<'scale> {
             }
             None
         })
-    }
-}
-
-#[derive(Default)]
-pub struct ValueBuilder<'scale> {
-    root: Option<Value<'scale>>,
-}
-
-impl<'scale> ValueBuilder<'scale> {
-    pub fn parse(
-        data: &'scale [u8],
-        top_type_id: u32,
-        types: &'scale scale_info::PortableRegistry,
-    ) -> Value<'scale> {
-        let mut slf = ValueBuilder::<'scale>::default();
-        crate::skeleton_decode(data, top_type_id, &mut slf, types);
-        slf.root.take().unwrap()
-    }
-
-    fn append(
-        path: &[(&'scale str, u32)],
-        current: &mut Value<'scale>,
-        new_field: &'scale str,
-        new_val: Value<'scale>,
-    ) {
-        if let Value::<'scale>::Object(fields) = current {
-            if path.is_empty() {
-                // println!("appending path {:?} fin {:?}  / {:?} to {:?}",path, new_field, new_val, &fields);
-                fields.push((new_field, new_val));
-                return;
-            }
-
-            let ((head, head_ty), tail) = path.split_first().unwrap();
-            for (field, child) in fields.iter_mut() {
-                if field == head {
-                    // println!("appending deeper new path {:?} | {:?}  / {:?} ", &tail, new_field, new_val);
-                    ValueBuilder::append(tail, child, new_field, new_val);
-                    return;
-                }
-            }
-            // println!("appending path {:?} notfound {:?} adding {:?} | {:?}  / {:?} ", &tail, head, fields, new_field, new_val);
-
-            fields.push((
-                head,
-                Value::Object(Box::new(vec![("_ty", Value::U32(*head_ty))])),
-            ));
-            let (_, new_current) = fields.last_mut().unwrap();
-            ValueBuilder::append(tail, new_current, new_field, new_val);
-        } else {
-            panic!()
-        }
-    }
-
-    #[cfg(not(feature = "bitvec"))]
-    #[inline]
-    fn parse_bitvec(data: &'scale [u8]) -> Option<Value> {
-        Some(Value::Scale(data))
-    }
-
-    #[cfg(feature = "bitvec")]
-    #[inline]
-    fn parse_bitvec(mut data: &'scale [u8]) -> Option<Value> {
-        assert_eq!(data.len(), 1, "bitvec size not suppored - please send pr.");
-        use parity_scale_codec::Decode;
-        Some(
-             Value::Bits(Box::new(
-                scale_value::BitSequence::decode(&mut data).unwrap())))
-                // <bitvec::prelude::BitVec<u8, bitvec::prelude::Lsb0>
-                // as
-                // parity_scale_codec::Decode>::decode(&mut data).unwrap())))
-    }
-}
-
-impl<'scale> super::VisitScale<'scale> for ValueBuilder<'scale> {
-    fn visit(
-        &mut self,
-        current_path: &[(&'scale str, u32)],
-        data: &'scale [u8],
-        ty: &scale_info::Type<scale_info::form::PortableForm>,
-        types: &PortableRegistry,
-    ) {
-        let new_val = match ty.type_def() {
-            scale_info::TypeDef::Primitive(TypeDefPrimitive::Str) => Some(Value::Str(
-                <&'scale str as crate::borrow_decode::BorrowDecode>::borrow_decode(data),
-            )),
-            scale_info::TypeDef::Primitive(TypeDefPrimitive::Bool) => Some(Value::Bool(
-                <bool as crate::borrow_decode::BorrowDecode>::borrow_decode(data),
-            )),
-            scale_info::TypeDef::Primitive(TypeDefPrimitive::U8) => Some(Value::U8(
-                <u8 as crate::borrow_decode::BorrowDecode>::borrow_decode(data),
-            )),
-            scale_info::TypeDef::Primitive(TypeDefPrimitive::U16) => Some(Value::U16(
-                <u16 as crate::borrow_decode::BorrowDecode>::borrow_decode(data),
-            )),
-            scale_info::TypeDef::Primitive(TypeDefPrimitive::U32) => Some(Value::U32(
-                <u32 as crate::borrow_decode::BorrowDecode>::borrow_decode(data),
-            )),
-            scale_info::TypeDef::Primitive(TypeDefPrimitive::U64) => Some(Value::U64(
-                <u64 as crate::borrow_decode::BorrowDecode>::borrow_decode(data),
-            )),
-            scale_info::TypeDef::Primitive(TypeDefPrimitive::U128) => Some(Value::U128(Box::new(
-                <u128 as crate::borrow_decode::BorrowDecode>::borrow_decode(data),
-            ))),
-
-            TypeDef::Sequence(_) | TypeDef::Array(_) => {
-                // Only hits here if it's u8, otherwise it's treated as an object with many fields.
-                Some(Value::Scale(data))
-            }
-            TypeDef::BitSequence(_seq) => ValueBuilder::parse_bitvec(data),
-            TypeDef::Compact(inner) => {
-                let inner = types.resolve(inner.type_param().id()).unwrap();
-                match inner.type_def() {
-                    TypeDef::Primitive(TypeDefPrimitive::U32) => Some(Value::U32(
-                        <Compact<u32> as crate::borrow_decode::BorrowDecode>::borrow_decode(data)
-                            .into(),
-                    )),
-                    TypeDef::Primitive(TypeDefPrimitive::U64) => Some(Value::U64(
-                        <Compact<u64> as crate::borrow_decode::BorrowDecode>::borrow_decode(data)
-                            .into(),
-                    )),
-                    TypeDef::Primitive(TypeDefPrimitive::U128) => Some(Value::U128(Box::new(
-                        <Compact<u128> as crate::borrow_decode::BorrowDecode>::borrow_decode(data)
-                            .into(),
-                    ))),
-                    _ => panic!("unsupported {:?}", inner),
-                }
-            }
-            _ => {
-                panic!("skipping {:?}", ty);
-            }
-        };
-
-        // place val in right location.
-        let last = if self.root.is_none() {
-            if current_path.is_empty() {
-                self.root = new_val;
-                return;
-            }
-            let (last, last_ty) = current_path.last().unwrap();
-            self.root = Some(Value::Object(Box::new(vec![("_ty", Value::U32(*last_ty))])));
-            last
-        } else {
-            let (last, _) = current_path.last().unwrap();
-            last
-        };
-
-        // println!("appending {:?}  / {:?}", current_path, new_val);
-
-        ValueBuilder::append(
-            &current_path[..current_path.len() - 1],
-            self.root.as_mut().unwrap(),
-            last,
-            new_val.unwrap(),
-        );
     }
 }
 

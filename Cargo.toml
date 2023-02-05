@@ -6,40 +6,17 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-parity-scale-codec = { version = "3.2.1", default-features = false, features = [
-    "full",
-] }
-scale-info = { version = "2.3", default-features = false, features = [] }
-# scale-info = { path="/home/gilescope/git/scale-info/", default-features = false, features = ["dogfood"]  }
-scale-value = { git="http://github.com/paritytech/scale-value.git", default-features = false }
-# scale-decode="*"
-
-# bitvec = { version = "1.0", default-features = false, features = [
-# ], optional = true }
+parity-scale-codec = { version = "3.2.1", default-features = false}
+scale-info = { version = "2.3", default-features = false }
+scale-bits={version="*", features = ["scale-info"], default-features = false}
+scale-decode= { git="http://github.com/paritytech/scale-decode.git", default-features = false, branch="jsdw-decode-as-type" }
 hex = { version = "*", optional = true }
 
 [dev-dependencies]
-parity-scale-codec = { version = "3.2.1", default-features = false, features = [
-    "bit-vec",
-    "full",
-] }
-scale-info = { version = "2.3", default-features = false, features = [
-    "bit-vec",
-] }
-# scale-info = { path="/home/gilescope/git/scale-info/", default-features = false, features = ["dogfood", "bit-vec"]  }
-# bitvec = { version = "1.0", default-features = false, features = [] }
-
-# frame-metadata = { version="15.0", default-features = false, features = ["v14"] }
-# frame-metadata = { git = "https://github.com/integritee-network/frame-metadata.git", default-features = false, features = [
-#     "v14",
-#     "full_derive",
-# ] }
 # once v16 released we can use versions
 frame-metadata = { git="https://github.com/paritytech/frame-metadata.git", default-features = false, features = ["v14", "decode"] }
-
 wasm-bindgen-test = "0.3.0"
 
 [features]
 default = ["display"]
 display = ["hex"]
-bitvec = ["parity-scale-codec/bit-vec", "scale-info/bit-vec"]
