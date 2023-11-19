@@ -2,7 +2,7 @@
 use core::fmt::{Display, Formatter};
 
 /// The underlying shape of a given value.
-/// 
+///
 /// 'scale is the lifetime of the binary blob.
 /// 'info is the lifetime of the metadata.
 #[derive(Clone, Debug)]

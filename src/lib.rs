@@ -191,7 +191,9 @@ impl scale_decode::visitor::Visitor for BorrowVisitor {
         match first {
             Some(Ok(Value::U8(_))) => {
                 let already_read_items = 1;
-                return Ok(Value::Scale(&value.bytes_from_start()[1/* TODO this 1 is assuming the compact int of the len is only one byte long*/..=(value.remaining() + already_read_items)]));
+                return Ok(Value::Scale(
+                    &value.bytes_from_start()[1/* TODO this 1 is assuming the compact int of the len is only one byte long*/..=(value.remaining() + already_read_items)],
+                ));
             }
             Some(Ok(not_u8)) => res.push(("0", not_u8)),
             _ => {}
@@ -287,7 +289,7 @@ impl scale_decode::visitor::Visitor for BorrowVisitor {
         value: &mut BitSequence<'scale>,
         _type_id: TypeId,
     ) -> Result<Self::Value<'scale, 'm>, Self::Error> {
-        let mut bits = scale_bits::Bits::new();//todo size
+        let mut bits = scale_bits::Bits::new(); //todo size
         for bit in value.decode().unwrap() {
             bits.push(bit.unwrap());
         }
@@ -304,7 +306,10 @@ impl scale_decode::visitor::Visitor for BorrowVisitor {
 /// If not optimise then we try and keep exactly the same shape as scale_value.
 /// TODO: tying these lifetimes together is not ideal.
 #[cfg(feature = "convert")]
-pub fn convert<'scale, T>(input: &'scale scale_value::Value<T>, optimise: bool) -> crate::Value<'scale, 'scale> {
+pub fn convert<'scale, T>(
+    input: &'scale scale_value::Value<T>,
+    optimise: bool,
+) -> crate::Value<'scale, 'scale> {
     match &input.value {
         scale_value::ValueDef::Primitive(p) => match &p {
             scale_value::Primitive::U128(uint) => {
@@ -330,9 +335,7 @@ pub fn convert<'scale, T>(input: &'scale scale_value::Value<T>, optimise: bool) 
             var.name.as_str(),
             convert_composite(&var.values, optimise),
         )])),
-        scale_value::ValueDef::BitSequence(bits) => {
-            crate::Value::Bits(Box::new(bits.clone()))
-        }
+        scale_value::ValueDef::BitSequence(bits) => crate::Value::Bits(Box::new(bits.clone())),
     }
 }
 
@@ -835,8 +838,8 @@ mod tests {
 
         let (id, types) = make_type::<bool>();
 
-        let val = decode_with_visitor(&mut encoded.as_slice(), id.id, &types, BorrowVisitor {})
-            .unwrap();
+        let val =
+            decode_with_visitor(&mut encoded.as_slice(), id.id, &types, BorrowVisitor {}).unwrap();
         assert_eq!(val, Value::Bool(false));
     }
 
@@ -875,8 +878,8 @@ mod tests {
         let encoded = val.encode();
 
         let (id, types) = make_type::<&str>();
-        let value = decode_with_visitor(&mut encoded.as_slice(), id.id, &types, BorrowVisitor {})
-            .unwrap();
+        let value =
+            decode_with_visitor(&mut encoded.as_slice(), id.id, &types, BorrowVisitor {}).unwrap();
 
         if let Value::Str(inner) = value {
             assert_eq!(val, inner);
@@ -901,8 +904,8 @@ mod tests {
         let encoded = val.encode();
 
         let (id, types) = make_type::<X>();
-        let val = decode_with_visitor(&mut encoded.as_slice(), id.id, &types, BorrowVisitor {})
-            .unwrap();
+        let val =
+            decode_with_visitor(&mut encoded.as_slice(), id.id, &types, BorrowVisitor {}).unwrap();
         assert_eq!(
             val,
             Value::Object(Box::new(vec![
@@ -927,8 +930,8 @@ mod tests {
 
         let (id, types) = make_type::<X>();
 
-        let val = decode_with_visitor(&mut encoded.as_slice(), id.id, &types, BorrowVisitor {})
-            .unwrap();
+        let val =
+            decode_with_visitor(&mut encoded.as_slice(), id.id, &types, BorrowVisitor {}).unwrap();
 
         assert_eq!(
             val,
@@ -954,8 +957,8 @@ mod tests {
 
         let (id, types) = make_type::<X>();
 
-        let val = decode_with_visitor(&mut encoded.as_slice(), id.id, &types, BorrowVisitor {})
-            .unwrap();
+        let val =
+            decode_with_visitor(&mut encoded.as_slice(), id.id, &types, BorrowVisitor {}).unwrap();
 
         assert_eq!(
             val,
@@ -987,8 +990,8 @@ mod tests {
 
         let (id, types) = make_type::<X>();
 
-        let val = decode_with_visitor(&mut encoded.as_slice(), id.id, &types, BorrowVisitor {})
-            .unwrap();
+        let val =
+            decode_with_visitor(&mut encoded.as_slice(), id.id, &types, BorrowVisitor {}).unwrap();
 
         assert_eq!(
             val,
@@ -1019,8 +1022,8 @@ mod tests {
 
         let (id, types) = make_type::<X>();
 
-        let val = decode_with_visitor(&mut encoded.as_slice(), id.id, &types, BorrowVisitor {})
-            .unwrap();
+        let val =
+            decode_with_visitor(&mut encoded.as_slice(), id.id, &types, BorrowVisitor {}).unwrap();
 
         assert_eq!(
             val,
@@ -1062,8 +1065,8 @@ mod tests {
 
         let (id, types) = make_type::<Y>();
 
-        let val = decode_with_visitor(&mut encoded.as_slice(), id.id, &types, BorrowVisitor {})
-            .unwrap();
+        let val =
+            decode_with_visitor(&mut encoded.as_slice(), id.id, &types, BorrowVisitor {}).unwrap();
 
         assert_eq!(
             val,
@@ -1118,8 +1121,8 @@ mod tests {
 
         let (id, types) = make_type::<Y>();
 
-        let val = decode_with_visitor(&mut encoded.as_slice(), id.id, &types, BorrowVisitor {})
-            .unwrap();
+        let val =
+            decode_with_visitor(&mut encoded.as_slice(), id.id, &types, BorrowVisitor {}).unwrap();
 
         assert_eq!(
             val,
