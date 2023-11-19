@@ -8,13 +8,12 @@ edition = "2021"
 [dependencies]
 parity-scale-codec = { version = "3.2.1", default-features = false}
 scale-info = { version = "2.3", default-features = false }
-scale-bits={version="*", features = ["scale-info"], default-features = false}
-scale-decode= { git="http://github.com/paritytech/scale-decode.git", default-features = false, branch="jsdw-decode-as-type" }
+scale-bits= {version="0.4", features = ["scale-info"], default-features = false}
+scale-decode = {version="0.10", default-features = false}
 hex = { version = "*", optional = true }
 
 [dev-dependencies]
-# once v16 released we can use versions
-frame-metadata = { git="https://github.com/paritytech/frame-metadata.git", default-features = false, features = ["v14", "decode"] }
+frame-metadata = {version = "16.0", default-features = false, features = ["current", "decode"]}
 wasm-bindgen-test = "0.3.0"
 
 [features]
