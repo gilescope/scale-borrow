@@ -2,6 +2,9 @@
 use core::fmt::{Display, Formatter};
 
 /// The underlying shape of a given value.
+/// 
+/// 'scale is the lifetime of the binary blob.
+/// 'info is the lifetime of the metadata.
 #[derive(Clone, Debug)]
 pub enum Value<'scale, 'info> {
     /// A named or unnamed struct-like, array-like or tuple-like set of values.
@@ -27,7 +30,7 @@ pub enum Value<'scale, 'info> {
     U256(&'scale [u8; 32]),
     /// A signed 256 bit number (internally represented as a 32 byte array).
     I256(&'scale [u8; 32]),
-    Bits(Box<scale_bits::scale::Decoder<'scale>>),
+    Bits(Box<scale_bits::Bits>),
 }
 
 impl<'scale, 'info> PartialEq for Value<'scale, 'info> {
